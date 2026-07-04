@@ -1,0 +1,13 @@
+services:
+  grafana:
+    extends:
+      file: .config/docker-compose-base.yaml
+      service: grafana
+    # Injects datasource URLs/tokens (Metrics + Traces) from the gitignored .env
+    # into the container env, where the provisioning files expand ${VAR}.
+    env_file:
+      - .env
+    # Use the host network stack so the container reaches datasources that are only
+    # routable via the host (e.g. VPN-internal endpoints). Also exposes :3000 on the
+    # host directly. Remove this if your datasources are publicly reachable.
+    network_mode: host

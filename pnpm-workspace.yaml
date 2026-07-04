@@ -1,0 +1,13 @@
+packages:
+  - "packages/*"
+
+allowBuilds:
+  '@parcel/watcher': set this to true or false
+  '@swc/core': set this to true or false
+
+# pnpm 10+ errors when dependency build scripts are neither approved nor acknowledged.
+# @swc/core and @parcel/watcher ship prebuilt platform binaries (via optional packages)
+# and don't need their postinstall, so we explicitly acknowledge + skip them here.
+ignoredBuiltDependencies:
+  - "@swc/core"
+  - "@parcel/watcher"

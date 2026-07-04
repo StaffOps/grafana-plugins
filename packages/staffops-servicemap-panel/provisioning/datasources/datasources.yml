@@ -1,0 +1,34 @@
+apiVersion: 1
+
+# Datasources for the servicemap panel dev environment.
+# URLs and auth are injected from the local (gitignored) .env via container env vars.
+# Grafana expands ${VAR} in provisioning files. See .env.example for the variables.
+
+datasources:
+  # --- Metrics (Prometheus-compatible; holds Tempo service graph metrics) ---
+  - name: Metrics
+    uid: servicemap-metrics
+    type: prometheus
+    access: proxy
+    url: ${METRICS_URL}
+    isDefault: true
+    jsonData:
+      httpMethod: POST
+      # Uncomment to send a bearer token from METRICS_TOKEN:
+      # httpHeaderName1: Authorization
+    # secureJsonData:
+    #   httpHeaderValue1: Bearer ${METRICS_TOKEN}
+    # For basic auth instead, set basicAuth: true + basicAuthUser and
+    # secureJsonData.basicAuthPassword from env.
+
+  # --- Traces (Tempo) — drill-down target for edge clicks ---
+  - name: Traces
+    uid: servicemap-traces
+    type: tempo
+    access: proxy
+    url: ${TEMPO_URL}
+    jsonData:
+      # Uncomment to send a bearer token from TEMPO_TOKEN:
+      # httpHeaderName1: Authorization
+    # secureJsonData:
+    #   httpHeaderValue1: Bearer ${TEMPO_TOKEN}

@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output / plugin artifacts
+dist/
+**/dist/
+coverage/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+
+# AI tooling — local config, not versioned (see AGENTS.md / ai-tool-agnostic rule).
+# CLAUDE.md itself is a versioned 1-line pointer; the .claude/ *directory* is not.
+.kiro/
+.claude/
+.codex/
+.cursor/
+.continue/
+.aider*
+
+# OS / editor
+.DS_Store
+*.log
