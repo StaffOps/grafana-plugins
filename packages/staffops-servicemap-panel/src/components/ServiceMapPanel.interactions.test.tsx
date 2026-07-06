@@ -26,6 +26,7 @@ import { ServiceMapOptions } from '../types';
 
 jest.mock('@grafana/runtime', () => ({
   getTemplateSrv: () => ({ replace: (s: string) => s }),
+  locationService: { partial: jest.fn() },
 }));
 
 jest.mock('@grafana/ui', () => ({
@@ -75,7 +76,7 @@ function buildProps(overrides?: Partial<PanelProps<ServiceMapOptions>>): PanelPr
             { name: 'client', type: FieldType.string, values: ['frontend', 'api-gw'], config: {} },
             { name: 'server', type: FieldType.string, values: ['api-gw', 'orders-svc'], config: {} },
             { name: 'Value', type: FieldType.number, values: [200, 80], config: {} },
-            { name: 'connection_type', type: FieldType.string, values: ['', 'database'], config: {} },
+            { name: 'connection_type', type: FieldType.string, values: ['', ''], config: {} },
           ],
           length: 2,
         },
@@ -112,7 +113,7 @@ function buildProps(overrides?: Partial<PanelProps<ServiceMapOptions>>): PanelPr
     eventBus: { subscribe: jest.fn(), getStream: jest.fn(), publish: jest.fn(), removeAllListeners: jest.fn(), newScopedBus: jest.fn() } as any,
     onOptionsChange: jest.fn(),
     onFieldConfigChange: jest.fn(),
-    replaceVariables: (s: string) => s,
+    replaceVariables: (s: string) => '$__all',
     onChangeTimeRange: jest.fn(),
     ...overrides,
   } as unknown as PanelProps<ServiceMapOptions>;
@@ -237,14 +238,14 @@ describe('Node hover tooltip: In/Out/Total RPS + Health + hint', () => {
     expect(text).toMatch(/Health:\s*(ok|warn|crit)/);
   });
 
-  it('node tooltip contains discoverability hint "Click: focus | Ctrl+Click: traces"', () => {
+  it('node tooltip contains discoverability hint "Click: focus · Dbl-click: drill · Ctrl+Click: traces"', () => {
     const { container } = render(<ServiceMapPanel {...buildProps()} />);
     const node = getNodeByLabel(container, 'frontend');
     expect(node).toBeTruthy();
 
     fireEvent.mouseMove(node!, { clientX: 100, clientY: 100 });
 
-    expect(container.textContent).toContain('Click: focus | Ctrl+Click: traces');
+    expect(container.textContent).toContain('Click: focus · Dbl-click: drill · Ctrl+Click: traces');
   });
 
   it('tooltip displays the node ID (service name)', () => {

@@ -137,6 +137,7 @@ function dagLayout(model: GraphModel, _width: number, _height: number): Position
   const positioned: PositionedNode[] = simNodes.map((sn) => {
     const nd = nodeDataMap.get(sn.id);
     return {
+      ...nd,
       id: sn.id,
       inRate: nd?.inRate ?? 0,
       outRate: nd?.outRate ?? 0,

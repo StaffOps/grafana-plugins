@@ -21,6 +21,7 @@ import { ServiceMapOptions } from '../types';
 // Mock @grafana/runtime
 jest.mock('@grafana/runtime', () => ({
   getTemplateSrv: () => ({ replace: (s: string) => s }),
+  locationService: { partial: jest.fn() },
 }));
 
 // Mock @grafana/ui
@@ -130,8 +131,8 @@ describe('ServiceMapPanel — rendering', () => {
     const svg = container.querySelector('svg');
     expect(svg).not.toBeNull();
     // 3 nodes: frontend, api-gw, database
-    const circles = svg!.querySelectorAll('circle');
-    expect(circles.length).toBe(3);
+    const nodeGroups = svg!.querySelectorAll('g[data-node-id]');
+    expect(nodeGroups.length).toBe(3);
     // 2 edges
     const lines = svg!.querySelectorAll('line');
     expect(lines.length).toBe(2);
@@ -750,7 +751,7 @@ describe('ServiceMapPanel — edge thickness', () => {
     const { container } = render(<ServiceMapPanel {...props} />);
     const line = container.querySelector('line');
     const width = parseFloat(line?.getAttribute('stroke-width') || '0');
-    expect(width).toBeGreaterThanOrEqual(2);
+    expect(width).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -866,7 +867,7 @@ describe('ServiceMapPanel — v2 health colors', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('ServiceMapPanel — v2 animated particles', () => {
-  it('renders particles (rect with animateMotion) when animate=true (default)', () => {
+  it('renders particles (circle with animateMotion) when animate=true (default)', () => {
     const props = buildPanelProps({
       options: {
 
@@ -879,10 +880,10 @@ describe('ServiceMapPanel — v2 animated particles', () => {
     const { container } = render(<ServiceMapPanel {...props} />);
     const particles = container.querySelectorAll('[data-particle="true"]');
     expect(particles.length).toBeGreaterThan(0);
-    // Each particle should be a rect with rx=2.5
+    // Each particle should be a circle with r=3.5
     const firstParticle = particles[0];
-    expect(firstParticle.tagName.toLowerCase()).toBe('rect');
-    expect(firstParticle.getAttribute('rx')).toBe('2.5');
+    expect(firstParticle.tagName.toLowerCase()).toBe('circle');
+    expect(firstParticle.getAttribute('r')).toBe('3.5');
     // Should have animateMotion child
     const motion = firstParticle.querySelector('animateMotion');
     expect(motion).not.toBeNull();
@@ -1050,11 +1051,8 @@ describe('ServiceMapPanel — v2 node→trace Explore URL', () => {
     const props = buildPanelProps();
     const { container } = render(<ServiceMapPanel {...props} />);
 
-    const svg = container.querySelector('svg')!;
-    const allGs = Array.from(svg.querySelectorAll('g'));
-    const nodeGs = allGs.filter((g) => g.querySelector('circle'));
-    // Find the "frontend" node by its text label
-    const frontendNode = nodeGs.find((g) => g.querySelector('text')?.textContent === 'frontend');
+    // Find the "frontend" node by its data-node-id attribute
+    const frontendNode = container.querySelector('[data-node-id="frontend"]');
     expect(frontendNode).toBeTruthy();
 
     // Ctrl+click on frontend node
@@ -1104,11 +1102,9 @@ describe('ServiceMapPanel — v2 node→trace Explore URL', () => {
     });
     const { container } = render(<ServiceMapPanel {...props} />);
 
-    const svg = container.querySelector('svg')!;
-    const allGs = Array.from(svg.querySelectorAll('g'));
-    const nodeGs = allGs.filter((g) => g.querySelector('circle'));
-    // Find the node with special name
-    const specialNode = nodeGs.find((g) => g.querySelector('text')?.textContent === specialName);
+    // Find the node with special name via data-node-id (sanitized)
+    const specialNodeId = specialName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const specialNode = container.querySelector(`[data-node-id="${specialNodeId}"]`);
     expect(specialNode).toBeTruthy();
     // Ctrl+click the special node
     fireEvent.click(specialNode!, { ctrlKey: true });
@@ -1317,7 +1313,7 @@ describe('ServiceMapPanel — particle geometry alignment', () => {
     }
   });
 
-  it('particles are children of rect[data-particle] with animateMotion inside', () => {
+  it('particles are children of circle[data-particle] with animateMotion inside', () => {
     const props = buildPanelProps({
       options: {
         errorThreshold: 0.05,
@@ -1331,9 +1327,9 @@ describe('ServiceMapPanel — particle geometry alignment', () => {
     expect(particles.length).toBeGreaterThan(0);
 
     for (const particle of Array.from(particles)) {
-      // Each particle is a rect
-      expect(particle.tagName.toLowerCase()).toBe('rect');
-      // Each rect must contain exactly one animateMotion child
+      // Each particle is a circle
+      expect(particle.tagName.toLowerCase()).toBe('circle');
+      // Each circle must contain exactly one animateMotion child
       const motionChild = particle.querySelector('animateMotion');
       expect(motionChild).not.toBeNull();
       // The animateMotion must have repeatCount=indefinite

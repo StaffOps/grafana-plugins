@@ -25,6 +25,8 @@ import { layoutGraph } from '../layout';
 import { health, flowParams, summarize, nodeHealth, HealthStatus } from '../viz';
 import { classifyNode, NodeKind, NODE_KIND_COLORS, NODE_KIND_LABELS } from '../viz/nodeKind';
 import { edgePath } from '../geometry';
+import { drillTarget } from '../drill/drillTarget';
+import { reachableSubgraph } from '../drill/reachableSubgraph';
 import {
   ViewState,
   zoomAtPoint,
@@ -55,9 +57,11 @@ function sanitizeId(str: string): string {
   return str.replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
-function rateToThickness(rate: number, maxRate: number): number {
-  if (maxRate <= 0) { return 2; }
-  return 2 + (rate / maxRate) * 8;
+/** Edge stroke-width: 1px (min) to 5px (max), linearly mapped from RPS. */
+export function rateToThickness(rate: number, maxRate: number): number {
+  if (maxRate <= 0) { return 1; }
+  const ratio = Math.max(0, Math.min(1, rate / maxRate));
+  return 1 + ratio * 4;
 }
 
 function rateToRadius(totalRate: number, maxTotalRate: number): number {
@@ -129,6 +133,7 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
 
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
+  const [isolatedNodeId, setIsolatedNodeId] = useState<string | null>(null);
   const [view, setView] = useState<ViewState>({ tx: 0, ty: 0, k: 1 });
   const [nodeOverrides, setNodeOverrides] = useState<Map<string, { x: number; y: number }>>(new Map());
   const dragRef = useRef<DragState | null>(null);
@@ -224,6 +229,12 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
     if (!focusedNodeId) { return null; }
     return computeBlastRadius({ nodes: graph.nodes, edges: graph.edges }, focusedNodeId, blastRadiusHops);
   }, [focusedNodeId, graph.nodes, graph.edges, blastRadiusHops]);
+
+  // Drill isolation: reachable subgraph (client-side multi-hop)
+  const isolatedSet = useMemo(() => {
+    if (!isolatedNodeId) { return null; }
+    return reachableSubgraph({ nodes: graph.nodes, edges: graph.edges }, isolatedNodeId);
+  }, [isolatedNodeId, graph.nodes, graph.edges]);
 
   // Reserve space for summary + legend
   const summaryHeight = 36;
@@ -321,11 +332,15 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
     dragRef.current = null;
     if (!wasDragRef.current && drag.type === 'pan') {
       setFocusedNodeId(null);
+      setIsolatedNodeId(null);
     }
   }, []);
 
   const handleBackgroundClick = useCallback((event: React.MouseEvent) => {
-    if (event.target === event.currentTarget) { setFocusedNodeId(null); }
+    if (event.target === event.currentTarget) {
+      setFocusedNodeId(null);
+      setIsolatedNodeId(null);
+    }
   }, []);
 
   // Edge click → trace drill
@@ -358,6 +373,14 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
       setFocusedNodeId((prev) => (prev === node.id ? null : node.id));
     }
   }, [options.traceDatasourceUid]);
+
+  // Double-click: isolate reachable dependency subgraph (client-side)
+  const handleNodeDoubleClick = useCallback((node: PositionedNode, event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsolatedNodeId((prev) => (prev === node.id ? null : node.id));
+    setFocusedNodeId(null);
+  }, []);
 
   // Context menu actions for node drill-downs
   const handleNodeLogsClick = useCallback((node: GraphNode) => {
@@ -406,6 +429,7 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
     const status = nodeHealthMap.get(node.id) ?? 'ok';
     const alerts = alertMap.get(node.id);
     const pos = tooltipPos(event);
+    const isDrillable = drillTarget(node, graph.edges) !== null;
     const content = [
       node.id,
       node.unresolvedWorkload ? '⚠️ Unresolved workload' : '',
@@ -416,12 +440,13 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
       `Total: ${formatRate(node.totalRate)}`,
       `Health: ${status}`,
       alerts ? `🔔 ${alerts.length} alert(s)` : '',
+      isDrillable ? '↢ Drill in' : '',
       '',
-      'Click: focus | Ctrl+Click: traces',
+      'Click: focus · Dbl-click: drill · Ctrl+Click: traces',
       options.logsDatasourceUid ? 'Shift+Click: logs' : '',
     ].filter(Boolean);
     setTooltip({ x: pos.x, y: pos.y, content });
-  }, [nodeHealthMap, alertMap, tooltipPos, options.logsDatasourceUid]);
+  }, [nodeHealthMap, alertMap, tooltipPos, options.logsDatasourceUid, graph.edges]);
 
   const handleMouseLeave = useCallback(() => { setTooltip(null); }, []);
 
@@ -481,10 +506,14 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
           const x2 = tgt.x - ux*(tgtRadius+ARROW_SIZE); const y2 = tgt.y - uy*(tgtRadius+ARROW_SIZE);
           const key = `${edge.source}-${edge.target}-${edgeIndex}`;
           const pathId = `path-${sanitizeId(edge.source)}-${sanitizeId(edge.target)}-${edgeIndex}`;
-          // Blast-radius focus
+          // Blast-radius focus + drill isolation
           const edgeKey = `${edge.source}\x00${edge.target}`;
-          const isFocused = blastRadius ? blastRadius.highlightedEdges.has(edgeKey) : true;
-          const opacity = isFocused ? 1 : 0.15;
+          const isIsolationVisible = isolatedSet
+            ? isolatedSet.has(edge.source) && isolatedSet.has(edge.target)
+            : true;
+          const isBlastVisible = blastRadius ? blastRadius.highlightedEdges.has(edgeKey) : true;
+          const isFocused = isIsolationVisible && isBlastVisible;
+          const opacity = isFocused ? 1 : (isolatedSet ? 0.08 : 0.15);
           const fp = flowParams(edge.rate, maxRate);
           const particleCount = Math.max(1, Math.round(fp.count / particleReduction));
           const midX = (x1+x2)/2; const midY = (y1+y2)/2;
@@ -505,11 +534,12 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
                 </text>
               )}
               {animate && isFocused && Array.from({length:particleCount}).map((_,i) => (
-                <rect key={`particle-${pathId}-${i}`} width={5} height={5} rx={2.5} ry={2.5}
-                  fill={color} opacity={0.8} data-particle="true" style={{pointerEvents:'none'}}>
+                <circle key={`particle-${pathId}-${i}`} r={3.5}
+                  fill="#fff" stroke={color} strokeWidth={1.2} opacity={0.95}
+                  data-particle="true" style={{pointerEvents:'none'}}>
                   <animateMotion dur={`${fp.speed}s`} repeatCount="indefinite"
                     begin={`${(i/particleCount)*fp.speed}s`} path={motionPath}/>
-                </rect>
+                </circle>
               ))}
               {showEdgeLabels && isFocused && (
                 <text x={midX} y={midY+thickness+12} textAnchor="middle"
@@ -528,8 +558,9 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
           const radius = rateToRadius(node.totalRate, maxTotalRate);
           const status = nodeHealthMap.get(node.id) ?? 'ok';
           const ringColor = healthColor(status, theme);
-          const isFocused = blastRadius ? blastRadius.highlighted.has(node.id) : true;
-          const opacity = isFocused ? 1 : 0.15;
+          const isFocused = (isolatedSet ? isolatedSet.has(node.id) : true)
+            && (blastRadius ? blastRadius.highlighted.has(node.id) : true);
+          const opacity = isFocused ? 1 : (isolatedSet ? 0.08 : 0.15);
           const alerts = alertMap.get(node.id);
           const kind = nodeKindMap.get(node.id) ?? 'service';
           const kindFill = kind === 'service'
@@ -540,6 +571,7 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
             <g key={node.id} data-node-id={sanitizeId(node.id)}
               onMouseMove={(e)=>{e.stopPropagation();handleNodeHover(node,e);}}
               onMouseLeave={handleMouseLeave}
+              onDoubleClick={(e)=>{handleNodeDoubleClick(node,e);}}
               onClick={(e)=>{
                 e.stopPropagation();
                 if (e.shiftKey && options.logsDatasourceUid) { handleNodeLogsClick(node); return; }
@@ -592,6 +624,47 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
           );
         })}
       </svg>
+
+      {/* Isolation indicator (replaces breadcrumb for drill) */}
+      {isolatedNodeId && (
+        <div
+          data-testid="isolation-indicator"
+          className={css`
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            z-index: 5;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-family: sans-serif;
+            padding: 4px 10px;
+            border-radius: 4px;
+            background: ${theme.colors.background.primary};
+            border: 1px solid ${theme.colors.border.weak};
+            color: ${theme.colors.text.secondary};
+          `}
+        >
+          <span>Isolated: <strong>{isolatedNodeId}</strong></span>
+          <button
+            data-testid="isolation-reset"
+            onClick={() => setIsolatedNodeId(null)}
+            className={css`
+              background: none;
+              border: 1px solid ${theme.colors.border.weak};
+              border-radius: 3px;
+              padding: 1px 6px;
+              cursor: pointer;
+              font-size: 10px;
+              color: ${theme.colors.text.link};
+              &:hover { background: ${theme.colors.background.secondary}; }
+            `}
+          >
+            reset
+          </button>
+        </div>
+      )}
 
       {/* Zoom controls */}
       <div className={css`position:absolute;bottom:${summaryHeight+12}px;right:8px;display:flex;flex-direction:column;gap:4px;z-index:1;`}>
