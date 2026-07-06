@@ -1,104 +1,73 @@
 {
-  "annotations": {
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 0,
+  "schemaVersion": 39,
+  "tags": ["servicemap", "demo"],
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "Service Map (DAG)",
+  "uid": "servicemap-demo",
+  "version": 8,
+  "templating": {
     "list": [
       {
-        "builtIn": 1,
-        "datasource": {
-          "type": "grafana",
-          "uid": "-- Grafana --"
-        },
-        "enable": true,
-        "hide": true,
-        "iconColor": "rgba(0, 211, 255, 1)",
-        "name": "Annotations & Alerts",
-        "type": "dashboard"
+        "name": "environment",
+        "label": "Environment",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "servicemap-metrics" },
+        "definition": "label_values(traces_service_graph_request_total, server_deployment_environment)",
+        "query": { "qryType": 1, "query": "label_values(traces_service_graph_request_total, server_deployment_environment)", "refId": "StandardVariableQuery" },
+        "includeAll": false, "multi": false, "refresh": 2, "sort": 1
+      },
+      {
+        "name": "namespace",
+        "label": "Namespace",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "servicemap-metrics" },
+        "definition": "label_values(traces_service_graph_request_total{server_deployment_environment=~\"$environment\"}, server_service_namespace)",
+        "query": { "qryType": 1, "query": "label_values(traces_service_graph_request_total{server_deployment_environment=~\"$environment\"}, server_service_namespace)", "refId": "StandardVariableQuery" },
+        "includeAll": false, "multi": false, "refresh": 2, "sort": 1
+      },
+      {
+        "name": "service",
+        "label": "Service",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "servicemap-metrics" },
+        "definition": "label_values(traces_service_graph_request_total{server_deployment_environment=~\"$environment\", server_service_namespace=~\"$namespace\"}, server)",
+        "query": { "qryType": 1, "query": "label_values(traces_service_graph_request_total{server_deployment_environment=~\"$environment\", server_service_namespace=~\"$namespace\"}, server)", "refId": "StandardVariableQuery" },
+        "includeAll": true, "multi": true, "allValue": ".*",
+        "current": { "text": ["All"], "value": ["$__all"] },
+        "refresh": 2, "sort": 1
       }
     ]
   },
-  "editable": true,
-  "fiscalYearStartMonth": 0,
-  "graphTooltip": 0,
-  "id": 1,
-  "links": [],
-  "liveNow": false,
   "panels": [
     {
-      "datasource": {
-        "type": "grafana-testdata-datasource",
-        "uid": "trlxrdZVk"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 0
-      },
       "id": 1,
-      "options": {
-        "seriesCountSize": "sm",
-        "showSeriesCount": false,
-        "text": "Default value of text input option"
-      },
+      "type": "staffops-servicemap-panel",
+      "title": "Service Map (DAG)",
+      "gridPos": { "h": 22, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "servicemap-metrics" },
       "targets": [
-        {
-          "datasource": {
-            "type": "grafana-testdata-datasource",
-            "uid": "db84e60d-b92a-4089-82cb-34842fb1754b"
-          },
-          "refId": "A",
-          "scenarioId": "raw_frame",
-          "rawFrameContent": "[\n  {\n    \"columns\": [\n      {\n        \"text\": \"Time\",\n        \"type\": \"time\"\n      },\n      {\n        \"text\": \"Label\",\n        \"type\": \"string\"\n      },\n      {\n        \"text\": \"Value\",\n        \"type\": \"number\"\n      }\n    ],\n    \"rows\": [\n      [1609459200000, \"A\", 10],\n      [1609462800000, \"B\", 20],\n      [1609466400000, \"C\", 15],\n      [1609470000000, \"D\", 25],\n      [1609473600000, \"E\", 30]\n    ]\n  },\n{\n    \"columns\": [\n      {\n        \"text\": \"Time\",\n        \"type\": \"time\"\n      },\n      {\n        \"text\": \"Label\",\n        \"type\": \"string\"\n      },\n      {\n        \"text\": \"Value\",\n        \"type\": \"number\"\n      }\n    ],\n    \"rows\": [\n      [1609459200000, \"A\", 40],\n      [1609462800000, \"B\", 50],\n      [1609466400000, \"C\", 45],\n      [1609470000000, \"D\", 55],\n      [1609473600000, \"E\", 60]\n    ]\n  }\n]"
-        }
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "servicemap-metrics" }, "format": "table", "instant": true, "range": false, "expr": "sum by (client, server, connection_type, virtual_node, client_deployment_environment, server_deployment_environment, client_service_namespace, server_service_namespace, client_eks_cluster, server_eks_cluster) (rate(traces_service_graph_request_total{server_deployment_environment=~\"$environment\", server_service_namespace=~\"$namespace\", server=~\"$service\"}[$__rate_interval])) or sum by (client, server, connection_type, virtual_node, client_deployment_environment, server_deployment_environment, client_service_namespace, server_service_namespace, client_eks_cluster, server_eks_cluster) (rate(traces_service_graph_request_total{client_deployment_environment=~\"$environment\", client_service_namespace=~\"$namespace\", client=~\"$service\"}[$__rate_interval]))" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "servicemap-metrics" }, "format": "table", "instant": true, "range": false, "expr": "sum by (client, server) (rate(traces_service_graph_request_failed_total{server_deployment_environment=~\"$environment\", server_service_namespace=~\"$namespace\", server=~\"$service\"}[$__rate_interval])) or sum by (client, server) (rate(traces_service_graph_request_failed_total{client_deployment_environment=~\"$environment\", client_service_namespace=~\"$namespace\", client=~\"$service\"}[$__rate_interval]))" },
+        { "refId": "C", "datasource": { "type": "prometheus", "uid": "servicemap-metrics" }, "format": "table", "instant": true, "range": false, "expr": "histogram_quantile(0.95, sum by (client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{server_deployment_environment=~\"$environment\", server_service_namespace=~\"$namespace\", server=~\"$service\"}[$__rate_interval]))) or histogram_quantile(0.95, sum by (client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{client_deployment_environment=~\"$environment\", client_service_namespace=~\"$namespace\", client=~\"$service\"}[$__rate_interval])))" }
       ],
-      "title": "Sample Panel Title",
-      "type": "staffops-servicemap-panel"
-    },
-    {
-      "datasource": {
-        "type": "grafana-testdata-datasource",
-        "uid": "trlxrdZVk"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 0
-      },
-      "id": 2,
       "options": {
-        "seriesCountSize": "sm",
-        "showSeriesCount": false,
-        "text": "Default value of text input option"
-      },
-      "targets": [
-        {
-          "alias": "",
-          "datasource": {
-            "type": "grafana-testdata-datasource",
-            "uid": "db84e60d-b92a-4089-82cb-34842fb1754b"
-          },
-          "refId": "A",
-          "scenarioId": "no_data_points"
-        }
-      ],
-      "title": "Sample Panel Title",
-      "type": "staffops-servicemap-panel"
+        "errorThreshold": 0.05,
+        "warnThreshold": 0.01,
+        "animate": true,
+        "showEdgeLabels": false,
+        "traceDatasourceUid": "servicemap-traces",
+        "connectionTypeFilter": "all",
+        "showVirtualClients": false,
+        "showVirtualServers": true,
+        "blastRadiusHops": 1,
+        "logsDatasourceUid": "",
+        "dashboardUrlTemplate": "",
+        "alertsRefId": "",
+        "queryMapping": { "rateRefId": "A", "errorRefId": "B", "latencyRefId": "C" }
+      }
     }
-  ],
-  "refresh": "",
-  "schemaVersion": 39,
-  "tags": [],
-  "templating": {
-    "list": []
-  },
-  "time": {
-    "from": "now-6h",
-    "to": "now"
-  },
-  "timepicker": {},
-  "timezone": "",
-  "title": "Provisioned servicemap dashboard",
-  "uid": "a538aeff-5a8a-42a5-901c-938d896fdd6f",
-  "version": 1,
-  "weekStart": ""
+  ]
 }

@@ -5,7 +5,7 @@
   "id": "staffops-servicemap-panel",
   "info": {
     "keywords": ["panel", "node graph", "service map", "topology", "tracing", "service graph"],
-    "description": "Service topology (node graph) panel built from Tempo service graph metrics, with selectable layouts (force / radial / DAG) and drill-down to a trace datasource.",
+    "description": "Service topology (node graph) panel built from Tempo service graph metrics, with a hierarchical DAG layout, health coloring, animated traffic, and drill-down to a trace datasource.",
     "author": {
       "name": "StaffOps"
     },
