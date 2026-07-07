@@ -467,9 +467,9 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
     );
   }
 
-  // eslint-disable-next-line react-hooks/refs -- panning updates `view` state on every
-  // mouse move, so this render-time ref read reflects the current drag state; a ref avoids
-  // an extra state + re-render per drag frame.
+  // Panning updates `view` state on every mouse move, so this render-time ref read
+  // reflects the current drag state; a ref avoids an extra state + re-render per drag frame.
+  // eslint-disable-next-line react-hooks/refs -- intentional, see note above
   const svgCursor = dragRef.current ? 'grabbing' : 'grab';
 
   return (
