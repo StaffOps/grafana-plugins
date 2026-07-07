@@ -24,7 +24,7 @@ import { GraphModel } from '../types';
 export function reachableSubgraph(
   model: GraphModel,
   nodeId: string,
-  maxHops: number = Infinity
+  maxHops = Infinity
 ): Set<string> {
   const result = new Set<string>();
 

@@ -25,7 +25,7 @@ export interface BlastRadiusResult {
 export function computeBlastRadius(
   model: GraphModel,
   nodeId: string,
-  hops: number = 1
+  hops = 1
 ): BlastRadiusResult {
   const highlighted = new Set<string>();
   const highlightedEdges = new Set<string>();

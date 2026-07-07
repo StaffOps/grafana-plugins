@@ -18,7 +18,7 @@ import { GraphModel, GraphNode, GraphEdge } from '../types';
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function makeModel(nodeIds: string[], edgePairs: [string, string, number?][]): GraphModel {
+function makeModel(nodeIds: string[], edgePairs: Array<[string, string, number?]>): GraphModel {
   const nodeRates = new Map<string, { inRate: number; outRate: number }>();
   for (const id of nodeIds) {
     nodeRates.set(id, { inRate: 0, outRate: 0 });
@@ -106,7 +106,7 @@ describe('layoutGraph — determinism', () => {
 
   it('output is deterministic with 10 nodes', () => {
     const ids = Array.from({ length: 10 }, (_, i) => `svc-${i}`);
-    const edges: [string, string, number][] = ids.slice(0, 9).map((id, i) => [id, ids[i + 1], (i + 1) * 5]);
+    const edges: Array<[string, string, number]> = ids.slice(0, 9).map((id, i) => [id, ids[i + 1], (i + 1) * 5]);
     const model = makeModel(ids, edges);
     const r1 = layoutGraph(model, WIDTH, HEIGHT);
     const r2 = layoutGraph(model, WIDTH, HEIGHT);
@@ -220,7 +220,7 @@ describe('layoutGraph — edge preservation', () => {
 describe('layoutGraph — large graph', () => {
   it('handles 50-node graph without crashing', () => {
     const ids = Array.from({ length: 50 }, (_, i) => `node-${i}`);
-    const edgePairs: [string, string, number][] = [];
+    const edgePairs: Array<[string, string, number]> = [];
     for (let i = 0; i < 49; i++) {
       edgePairs.push([ids[i], ids[i + 1], i + 1]);
     }

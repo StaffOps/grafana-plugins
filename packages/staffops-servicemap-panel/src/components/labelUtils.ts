@@ -34,8 +34,8 @@ export function truncateLabel(label: string, maxChars: number = DEFAULT_LABEL_MA
  */
 export function labelYOffset(
   indexInLayer: number,
-  baseOffset: number = 14,
-  staggerAmount: number = 12
+  baseOffset = 14,
+  staggerAmount = 12
 ): number {
   return baseOffset + (indexInLayer % 2 === 1 ? staggerAmount : 0);
 }

@@ -132,7 +132,9 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
   const dragRef = useRef<DragState | null>(null);
   const wasDragRef = useRef<boolean>(false);
   const viewRef = useRef<ViewState>(view);
-  viewRef.current = view;
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
   /** Timer to distinguish single-click from double-click on nodes. */
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const DBLCLICK_DELAY = 250;
@@ -465,6 +467,11 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
     );
   }
 
+  // eslint-disable-next-line react-hooks/refs -- panning updates `view` state on every
+  // mouse move, so this render-time ref read reflects the current drag state; a ref avoids
+  // an extra state + re-render per drag frame.
+  const svgCursor = dragRef.current ? 'grabbing' : 'grab';
+
   return (
     <div ref={containerRef} className={css`position:relative;width:${width}px;height:${height}px;overflow:hidden;`}>
       <svg
@@ -474,7 +481,7 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
         onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp} onClick={handleBackgroundClick}
         onMouseLeave={(e) => { handleMouseLeave(); dragRef.current = null; }}
-        style={{ cursor: dragRef.current ? 'grabbing' : 'grab' }}
+        style={{ cursor: svgCursor }}
       >
         <defs>
           <marker id="arrow-ok" markerWidth={String(ARROW_SIZE)} markerHeight={String(ARROW_SIZE*0.6)} refX={String(ARROW_SIZE)} refY={String(ARROW_SIZE*0.3)} orient="auto" markerUnits="userSpaceOnUse">
