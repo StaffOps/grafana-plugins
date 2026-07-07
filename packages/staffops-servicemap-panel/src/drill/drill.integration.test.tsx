@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { render, fireEvent, screen } from '@testing-library/react';
+import { render, fireEvent, screen, act } from '@testing-library/react';
 import { PanelProps, FieldType, LoadingState } from '@grafana/data';
 import { ServiceMapOptions } from '../types';
 
@@ -239,11 +239,17 @@ describe('Drill isolation (client-side reachable subgraph)', () => {
   });
 
   describe('Existing interactions preserved', () => {
+    beforeEach(() => { jest.useFakeTimers(); });
+    afterEach(() => { jest.useRealTimers(); });
+
     it('single click still toggles focus (1-hop blast radius), no isolation', () => {
       const { container } = render(<ServiceMapPanel {...buildDrillProps()} />);
 
       const apiGwNode = getNodeByDataId(container, 'api-gw');
       fireEvent.click(apiGwNode!);
+
+      // Focus is deferred by DBLCLICK_DELAY to distinguish from double-click
+      act(() => { jest.advanceTimersByTime(300); });
 
       // Focus dims non-neighbors at 0.15 (not 0.08 like isolation)
       // api-gw neighbors: frontend (in), orders-svc (out), redis-main (out)

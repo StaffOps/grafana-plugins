@@ -10,7 +10,7 @@
  */
 
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, act } from '@testing-library/react';
 import { PanelProps, FieldType, LoadingState } from '@grafana/data';
 import { ServiceMapOptions } from '../types';
 
@@ -178,16 +178,18 @@ describe('ServiceMapPanel — edge click drill-down', () => {
 
     expect(mockWindowOpen).toHaveBeenCalledTimes(1);
     const url = mockWindowOpen.mock.calls[0][0] as string;
-    expect(url).toMatch(/^\/explore\?left=/);
+    expect(url).toMatch(/^\/explore\?schemaVersion=1&orgId=1&panes=/);
 
     // Decode and validate structure
-    const leftParam = url.replace('/explore?left=', '');
-    const decoded = JSON.parse(decodeURIComponent(leftParam));
+    const panesParam = url.replace(/^\/explore\?schemaVersion=1&orgId=1&panes=/, '');
+    const panes = JSON.parse(decodeURIComponent(panesParam));
+    const decoded = panes.svc;
     expect(decoded.datasource).toBe('tempo-uid-123');
     expect(decoded.queries).toHaveLength(1);
     expect(decoded.queries[0].queryType).toBe('traceql');
     expect(decoded.queries[0].query).toContain('resource.service.name');
     expect(decoded.queries[0].query).toContain('span.client');
+    expect(decoded.queries[0].datasource).toEqual({ type: 'tempo', uid: 'tempo-uid-123' });
     expect(decoded.range).toEqual({ from: 'now-1h', to: 'now' });
   });
 
@@ -269,9 +271,9 @@ describe('ServiceMapPanel — XSS/injection escaping', () => {
     }
     expect(mockWindowOpen).toHaveBeenCalledTimes(1);
     const url = mockWindowOpen.mock.calls[0][0] as string;
-    const leftParam = url.replace('/explore?left=', '');
-    const decoded = JSON.parse(decodeURIComponent(leftParam));
-    const query: string = decoded.queries[0].query;
+    const panesParam = url.replace(/^\/explore\?schemaVersion=1&orgId=1&panes=/, '');
+    const panes = JSON.parse(decodeURIComponent(panesParam));
+    const query: string = panes.svc.queries[0].query;
     // Quotes in the client name should be escaped with backslash
     expect(query).toContain('svc\\"with\\"quotes');
     // Should NOT contain unescaped quotes that would break TraceQL syntax
@@ -304,9 +306,9 @@ describe('ServiceMapPanel — XSS/injection escaping', () => {
     }
     expect(mockWindowOpen).toHaveBeenCalledTimes(1);
     const url = mockWindowOpen.mock.calls[0][0] as string;
-    const leftParam = url.replace('/explore?left=', '');
-    const decoded = JSON.parse(decodeURIComponent(leftParam));
-    const query: string = decoded.queries[0].query;
+    const panesParam = url.replace(/^\/explore\?schemaVersion=1&orgId=1&panes=/, '');
+    const panes = JSON.parse(decodeURIComponent(panesParam));
+    const query: string = panes.svc.queries[0].query;
     // Backslash should be double-escaped
     expect(query).toContain('svc\\\\path');
   });
@@ -926,6 +928,9 @@ describe('ServiceMapPanel — v2 animated particles', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('ServiceMapPanel — v2 focus mode', () => {
+  beforeEach(() => { jest.useFakeTimers(); });
+  afterEach(() => { jest.useRealTimers(); });
+
   it('clicking a node dims non-neighbor nodes (opacity 0.15)', () => {
     const props = buildPanelProps();
     const { container } = render(<ServiceMapPanel {...props} />);
@@ -942,6 +947,7 @@ describe('ServiceMapPanel — v2 focus mode', () => {
 
     // Click to focus
     fireEvent.click(frontendNode!);
+    act(() => { jest.advanceTimersByTime(300); });
 
     // Re-query after state update triggers re-render
     const nodeGsAfter = getNodeGs();
@@ -962,6 +968,7 @@ describe('ServiceMapPanel — v2 focus mode', () => {
     const nodeGs = getNodeGs();
     const frontendNode = nodeGs.find((g) => g.getAttribute('data-node-id') === 'frontend');
     fireEvent.click(frontendNode!); // Focus
+    act(() => { jest.advanceTimersByTime(300); });
 
     // Click the SVG background to reset
     fireEvent.click(svg);
@@ -984,6 +991,7 @@ describe('ServiceMapPanel — v2 focus mode', () => {
     const databaseNode = nodeGs.find((g) => g.getAttribute('data-node-id') === 'database');
     expect(databaseNode).toBeTruthy();
     fireEvent.click(databaseNode!);
+    act(() => { jest.advanceTimersByTime(300); });
 
     const lines = svg.querySelectorAll('line');
     const lineOpacities = Array.from(lines).map((l) => l.getAttribute('opacity'));
@@ -1060,10 +1068,11 @@ describe('ServiceMapPanel — v2 node→trace Explore URL', () => {
 
     expect(mockWindowOpen).toHaveBeenCalledTimes(1);
     const url = mockWindowOpen.mock.calls[0][0] as string;
-    expect(url).toMatch(/^\/explore\?left=/);
+    expect(url).toMatch(/^\/explore\?schemaVersion=1&orgId=1&panes=/);
 
-    const leftParam = url.replace('/explore?left=', '');
-    const decoded = JSON.parse(decodeURIComponent(leftParam));
+    const panesParam = url.replace(/^\/explore\?schemaVersion=1&orgId=1&panes=/, '');
+    const panes = JSON.parse(decodeURIComponent(panesParam));
+    const decoded = panes.svc;
     expect(decoded.datasource).toBe('tempo-uid-123');
     expect(decoded.queries[0].query).toContain('resource.service.name');
     expect(decoded.queries[0].query).toContain('frontend');
@@ -1111,9 +1120,9 @@ describe('ServiceMapPanel — v2 node→trace Explore URL', () => {
 
     expect(mockWindowOpen).toHaveBeenCalledTimes(1);
     const url = mockWindowOpen.mock.calls[0][0] as string;
-    const leftParam = url.replace('/explore?left=', '');
-    const decoded = JSON.parse(decodeURIComponent(leftParam));
-    const query: string = decoded.queries[0].query;
+    const panesParam = url.replace(/^\/explore\?schemaVersion=1&orgId=1&panes=/, '');
+    const panes = JSON.parse(decodeURIComponent(panesParam));
+    const query: string = panes.svc.queries[0].query;
     // Backslash should be double-escaped, quotes should be escaped
     expect(query).toContain('svc\\"with\\\\special');
   });
@@ -1128,11 +1137,11 @@ describe('ServiceMapPanel — v2 node→trace Explore URL', () => {
     fireEvent.click(nodeGs[0], { ctrlKey: true });
 
     const url = mockWindowOpen.mock.calls[0][0] as string;
-    const leftParam = url.replace('/explore?left=', '');
-    // The left param should be URL-encoded (contains %7B for {, %22 for ", etc.)
-    expect(leftParam).toMatch(/%7B|%22|%3A/i);
+    const panesParam = url.replace(/^\/explore\?schemaVersion=1&orgId=1&panes=/, '');
+    // The panes param should be URL-encoded (contains %7B for {, %22 for ", etc.)
+    expect(panesParam).toMatch(/%7B|%22|%3A/i);
     // It should be valid JSON when decoded
-    expect(() => JSON.parse(decodeURIComponent(leftParam))).not.toThrow();
+    expect(() => JSON.parse(decodeURIComponent(panesParam))).not.toThrow();
   });
 
   it('does not open URL when traceDatasourceUid is empty', () => {
@@ -1556,6 +1565,9 @@ describe('ServiceMapPanel — zoom/pan/fit-to-view', () => {
 });
 
 describe('ServiceMapPanel — node drag behavior', () => {
+  beforeEach(() => { jest.useFakeTimers(); });
+  afterEach(() => { jest.useRealTimers(); });
+
   it('dragging a node past threshold moves it (position changes)', () => {
     const props = buildPanelProps();
     const { container } = render(<ServiceMapPanel {...props} />);
@@ -1618,6 +1630,7 @@ describe('ServiceMapPanel — node drag behavior', () => {
     fireEvent.mouseUp(svg, { clientX: 100, clientY: 100 });
     // Also fire the onClick for the node group (React synthetic event)
     fireEvent.click(nodeGroup);
+    act(() => { jest.advanceTimersByTime(300); });
 
     // At least one node should be dimmed (opacity 0.15) since focus mode is active
     const allGroups = svg.querySelectorAll('[data-node-id]');
@@ -1680,6 +1693,7 @@ describe('ServiceMapPanel — node drag behavior', () => {
     fireEvent.mouseDown(nodeGroup, { button: 0, clientX: 100, clientY: 100 });
     fireEvent.mouseUp(svg, { clientX: 100, clientY: 100 });
     fireEvent.click(nodeGroup, { clientX: 100, clientY: 100 });
+    act(() => { jest.advanceTimersByTime(300); });
 
     // Should be focused: at least one node should have reduced opacity
     const allNodeGroups = svg.querySelectorAll('[data-node-id]');

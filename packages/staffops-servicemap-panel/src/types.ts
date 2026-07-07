@@ -20,6 +20,8 @@ export interface GraphNode {
   serviceName?: string;
   /** EKS cluster from the side where this node appears. */
   eksCluster?: string;
+  /** k8s deployment name (workload) from the side where this node appears. */
+  workload?: string;
   /** True when workload name is unresolved (generic 'app' or ReplicaSet hash). */
   unresolvedWorkload?: boolean;
   /** Whether this node represents a virtual_node=server (external dependency). */
@@ -70,6 +72,8 @@ export interface GraphModel {
 export interface PositionedNode extends GraphNode {
   x: number;
   y: number;
+  /** Zero-based index of this node within its DAG layer (for label staggering). */
+  layerIndex?: number;
 }
 
 /** Graph model with positioned nodes (ready for rendering). */

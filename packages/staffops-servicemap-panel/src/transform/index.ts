@@ -496,6 +496,7 @@ export function transformToGraph(frames: DataFrame[], mapping: QueryRoleMapping)
       namespace: data.namespace || undefined,
       serviceName: data.serviceName || undefined,
       eksCluster: data.eksCluster || undefined,
+      workload: data.k8sDeploymentName || undefined,
       unresolvedWorkload: isUnresolvedWorkload(data.k8sDeploymentName, data.serviceWorkload),
       isVirtualServer: data.isVirtualServer || undefined,
       isVirtualClient: data.isVirtualClient || undefined,

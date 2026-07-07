@@ -12,6 +12,7 @@ interface LayoutNode {
   id: string;
   x?: number;
   y?: number;
+  layerIndex?: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -115,19 +116,22 @@ function dagLayout(model: GraphModel, _width: number, _height: number): Position
     layerGroups.get(layer)!.push(id);
   }
 
-  // Compact spacing: fixed gaps between nodes, not stretched to fill panel
-  const gap = MIN_INTRA_LAYER_GAP;
+  // Compact spacing: fixed gaps between nodes, widened slightly for dense layers
   const layerGap = INTER_LAYER_GAP;
 
   const simNodes: LayoutNode[] = [];
 
   for (const [layer, nodeIds] of layerGroups.entries()) {
     nodeIds.sort(); // deterministic
+    // Widen gap when layer has many nodes to reduce label collision
+    const gap = nodeIds.length > 6
+      ? MIN_INTRA_LAYER_GAP + 20
+      : MIN_INTRA_LAYER_GAP;
     const layerWidth = (nodeIds.length - 1) * gap;
     const startX = -layerWidth / 2;
     const y = layer * layerGap;
     nodeIds.forEach((id, i) => {
-      simNodes.push({ id, x: startX + i * gap, y });
+      simNodes.push({ id, x: startX + i * gap, y, layerIndex: i });
     });
   }
 
@@ -144,6 +148,7 @@ function dagLayout(model: GraphModel, _width: number, _height: number): Position
       totalRate: nd?.totalRate ?? 0,
       x: sn.x ?? 0,
       y: sn.y ?? 0,
+      layerIndex: sn.layerIndex ?? 0,
     };
   });
 

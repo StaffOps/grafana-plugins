@@ -1,6 +1,10 @@
 /**
  * Drill-down URL builders for node interactions.
  * Pure functions that produce Grafana Explore/dashboard URLs.
+ *
+ * Uses the modern Grafana Explore URL schema (10.1+):
+ *   /explore?schemaVersion=1&orgId=1&panes=<urlencoded JSON>
+ * where panes is an object keyed by an arbitrary pane id.
  */
 
 import { GraphNode } from '../types';
@@ -11,17 +15,49 @@ function encodeForUrl(str: string): string {
 }
 
 /** Escapes a label value for safe use inside a TraceQL string literal. */
-function escapeTraceQLValue(str: string): string {
-  return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+export function escapeTraceQLValue(str: string): string {
+  return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\0/g, '');
 }
 
 /** Escapes a label value for safe use inside a LogQL selector. */
 function escapeLogQLValue(str: string): string {
-  return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\0/g, '');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Trace drill (existing behavior, unchanged)
+// Shared Explore URL builder (modern panes schema)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ExploreQuery {
+  refId: string;
+  queryType?: string;
+  query?: string;
+  expr?: string;
+  datasource: { type: string; uid: string };
+}
+
+/**
+ * Builds a Grafana Explore URL using the modern panes schema
+ * (schemaVersion=1, Grafana 10.1+).
+ */
+export function buildExploreUrl(
+  datasourceUid: string,
+  datasourceType: string,
+  queries: ExploreQuery[],
+  range: { from: string; to: string } = { from: 'now-1h', to: 'now' }
+): string {
+  const panes = {
+    svc: {
+      datasource: datasourceUid,
+      queries,
+      range,
+    },
+  };
+  return `/explore?schemaVersion=1&orgId=1&panes=${encodeForUrl(JSON.stringify(panes))}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Trace drill
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -38,13 +74,14 @@ export function buildTracesDrillUrl(
   const serviceName = node.serviceName || node.id;
   const traceQL = `{ resource.service.name = "${escapeTraceQLValue(serviceName)}" }`;
 
-  const left = JSON.stringify({
-    datasource: traceDatasourceUid,
-    queries: [{ refId: 'A', queryType: 'traceql', query: traceQL }],
-    range: { from: 'now-1h', to: 'now' },
-  });
-
-  return `/explore?left=${encodeForUrl(left)}`;
+  return buildExploreUrl(traceDatasourceUid, 'tempo', [
+    {
+      refId: 'A',
+      queryType: 'traceql',
+      query: traceQL,
+      datasource: { type: 'tempo', uid: traceDatasourceUid },
+    },
+  ]);
 }
 
 /**
@@ -59,18 +96,17 @@ export function buildDbClientDrillUrl(
     return null;
   }
 
-  // For DB nodes, search for client spans that call this database
-  // The db.system attribute identifies the type (e.g. postgresql, redis)
   const dbName = escapeTraceQLValue(node.id);
   const traceQL = `{ span.db.system != "" && resource.service.name != "${dbName}" }`;
 
-  const left = JSON.stringify({
-    datasource: traceDatasourceUid,
-    queries: [{ refId: 'A', queryType: 'traceql', query: traceQL }],
-    range: { from: 'now-1h', to: 'now' },
-  });
-
-  return `/explore?left=${encodeForUrl(left)}`;
+  return buildExploreUrl(traceDatasourceUid, 'tempo', [
+    {
+      refId: 'A',
+      queryType: 'traceql',
+      query: traceQL,
+      datasource: { type: 'tempo', uid: traceDatasourceUid },
+    },
+  ]);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -96,14 +132,12 @@ export function buildLogsDrillUrl(
   let selector: string;
   if (namespace) {
     if (node.unresolvedWorkload) {
-      // Fallback: use app label with service_name
       const app = node.serviceName || workload;
       selector = `{namespace="${escapeLogQLValue(namespace)}", app="${escapeLogQLValue(app)}"}`;
     } else {
       selector = `{namespace="${escapeLogQLValue(namespace)}", pod=~"${escapeLogQLValue(workload)}.*"}`;
     }
   } else {
-    // No namespace — best effort with just the workload/app
     if (node.unresolvedWorkload && node.serviceName) {
       selector = `{app="${escapeLogQLValue(node.serviceName)}"}`;
     } else {
@@ -111,13 +145,43 @@ export function buildLogsDrillUrl(
     }
   }
 
-  const left = JSON.stringify({
-    datasource: logsDatasourceUid,
-    queries: [{ refId: 'A', expr: selector }],
-    range: { from: 'now-1h', to: 'now' },
-  });
+  return buildExploreUrl(logsDatasourceUid, 'loki', [
+    {
+      refId: 'A',
+      expr: selector,
+      datasource: { type: 'loki', uid: logsDatasourceUid },
+    },
+  ]);
+}
 
-  return `/explore?left=${encodeForUrl(left)}`;
+// ─────────────────────────────────────────────────────────────────────────────
+// Edge trace drill (used by ServiceMapPanel handleEdgeClick)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Builds an Explore URL for an edge (client→server) trace query.
+ */
+export function buildEdgeTracesDrillUrl(
+  source: string,
+  target: string,
+  traceDatasourceUid: string
+): string | null {
+  if (!traceDatasourceUid) {
+    return null;
+  }
+
+  const server = escapeTraceQLValue(target);
+  const client = escapeTraceQLValue(source);
+  const traceQL = `{ resource.service.name = "${server}" && span.client = "${client}" }`;
+
+  return buildExploreUrl(traceDatasourceUid, 'tempo', [
+    {
+      refId: 'A',
+      queryType: 'traceql',
+      query: traceQL,
+      datasource: { type: 'tempo', uid: traceDatasourceUid },
+    },
+  ]);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

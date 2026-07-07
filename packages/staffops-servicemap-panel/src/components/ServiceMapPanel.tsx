@@ -20,13 +20,14 @@ import { ServiceMapOptions, GraphEdge, GraphNode, PositionedNode, PositionedGrap
 import { transformToGraph, filterGraph, FilterOptions } from '../transform';
 import { computeBlastRadius } from '../transform/blastRadius';
 import { matchAlerts } from '../transform/alertOverlay';
-import { buildTracesDrillUrl, buildDbClientDrillUrl, buildLogsDrillUrl, buildDashboardUrl } from '../transform/drilldown';
+import { buildTracesDrillUrl, buildDbClientDrillUrl, buildLogsDrillUrl, buildDashboardUrl, buildEdgeTracesDrillUrl } from '../transform/drilldown';
 import { layoutGraph } from '../layout';
 import { health, flowParams, summarize, nodeHealth, HealthStatus } from '../viz';
 import { classifyNode, NodeKind, NODE_KIND_COLORS, NODE_KIND_LABELS } from '../viz/nodeKind';
 import { edgePath } from '../geometry';
 import { drillTarget } from '../drill/drillTarget';
 import { reachableSubgraph } from '../drill/reachableSubgraph';
+import { truncateLabel, labelYOffset } from './labelUtils';
 import {
   ViewState,
   zoomAtPoint,
@@ -44,14 +45,6 @@ interface Props extends PanelProps<ServiceMapOptions> {}
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
-
-function encodeForUrl(str: string): string {
-  return encodeURIComponent(str);
-}
-
-function escapeTraceQLValue(str: string): string {
-  return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}
 
 function sanitizeId(str: string): string {
   return str.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -140,6 +133,9 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
   const wasDragRef = useRef<boolean>(false);
   const viewRef = useRef<ViewState>(view);
   viewRef.current = view;
+  /** Timer to distinguish single-click from double-click on nodes. */
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const DBLCLICK_DELAY = 250;
 
   // M2 options with defaults
   const connectionTypeFilter = options.connectionTypeFilter ?? 'all';
@@ -292,14 +288,15 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
           startX: e.clientX, startY: e.clientY,
           lastX: e.clientX, lastY: e.clientY, totalDx: 0, totalDy: 0,
         };
+        // Do NOT preventDefault here — allows native dblclick to fire on nodes
       } else {
         dragRef.current = {
           type: 'pan',
           startX: e.clientX, startY: e.clientY,
           lastX: e.clientX, lastY: e.clientY, totalDx: 0, totalDy: 0,
         };
+        e.preventDefault();
       }
-      e.preventDefault();
     },
     [effectiveNodes]
   );
@@ -346,22 +343,15 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
   // Edge click → trace drill
   const handleEdgeClick = useCallback((edge: GraphEdge) => {
     if (!options.traceDatasourceUid) { return; }
-    const server = escapeTraceQLValue(edge.target);
-    const client = escapeTraceQLValue(edge.source);
-    const traceQL = `{ resource.service.name = "${server}" && span.client = "${client}" }`;
-    const left = JSON.stringify({
-      datasource: options.traceDatasourceUid,
-      queries: [{ refId: 'A', queryType: 'traceql', query: traceQL }],
-      range: { from: 'now-1h', to: 'now' },
-    });
-    window.open(`/explore?left=${encodeForUrl(left)}`, '_blank', 'noopener,noreferrer');
+    const url = buildEdgeTracesDrillUrl(edge.source, edge.target, options.traceDatasourceUid);
+    if (url) { window.open(url, '_blank', 'noopener,noreferrer'); }
   }, [options.traceDatasourceUid]);
 
-  // Node click: focus (blast radius) or drill
+  // Node click: focus (blast radius) or drill — deferred to allow dblclick cancellation
   const handleNodeClick = useCallback((node: PositionedNode, event: React.MouseEvent) => {
     if (wasDragRef.current) { wasDragRef.current = false; return; }
     if (event.ctrlKey || event.metaKey) {
-      // Drill-down
+      // Drill-down (immediate, not conflicting with dblclick)
       let url: string | null = null;
       if (node.isDatabase || node.isVirtualServer) {
         url = buildDbClientDrillUrl(node, options.traceDatasourceUid);
@@ -370,7 +360,12 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
       }
       if (url) { window.open(url, '_blank', 'noopener,noreferrer'); }
     } else {
-      setFocusedNodeId((prev) => (prev === node.id ? null : node.id));
+      // Defer focus toggle so double-click can cancel it
+      if (clickTimerRef.current) { clearTimeout(clickTimerRef.current); }
+      clickTimerRef.current = setTimeout(() => {
+        clickTimerRef.current = null;
+        setFocusedNodeId((prev) => (prev === node.id ? null : node.id));
+      }, DBLCLICK_DELAY);
     }
   }, [options.traceDatasourceUid]);
 
@@ -378,6 +373,11 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
   const handleNodeDoubleClick = useCallback((node: PositionedNode, event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
+    // Cancel pending single-click focus toggle
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
     setIsolatedNodeId((prev) => (prev === node.id ? null : node.id));
     setFocusedNodeId(null);
   }, []);
@@ -432,9 +432,11 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
     const isDrillable = drillTarget(node, graph.edges) !== null;
     const content = [
       node.id,
-      node.unresolvedWorkload ? '⚠️ Unresolved workload' : '',
       node.environment ? `Env: ${node.environment}` : '',
       node.namespace ? `NS: ${node.namespace}` : '',
+      node.workload ? `Workload: ${node.workload}` : '',
+      node.eksCluster ? `Cluster: ${node.eksCluster}` : '',
+      node.serviceName && node.serviceName !== node.id ? `Service: ${node.serviceName}` : '',
       `In: ${formatRate(node.inRate)}`,
       `Out: ${formatRate(node.outRate)}`,
       `Total: ${formatRate(node.totalRate)}`,
@@ -566,7 +568,6 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
           const kindFill = kind === 'service'
             ? theme.colors.background.secondary
             : NODE_KIND_COLORS[kind];
-          const isUnresolved = node.unresolvedWorkload;
           return (
             <g key={node.id} data-node-id={sanitizeId(node.id)}
               onMouseMove={(e)=>{e.stopPropagation();handleNodeHover(node,e);}}
@@ -583,7 +584,6 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
               <circle cx={node.x} cy={node.y} r={radius}
                 fill={kindFill}
                 stroke={ringColor} strokeWidth={3}
-                strokeDasharray={isUnresolved ? '4 3' : 'none'}
                 data-kind={kind}/>
               {/* Kind glyph (lightweight, color is primary signal) */}
               {kind === 'database' && (
@@ -609,16 +609,11 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
                   </text>
                 </g>
               )}
-              {/* Unresolved badge */}
-              {isUnresolved && !alerts && (
-                <text x={node.x+radius*0.6} y={node.y-radius*0.5} fontSize={12}
-                  style={{pointerEvents:'none'}}>?</text>
-              )}
               {/* Node label */}
-              <text x={node.x} y={node.y+radius+14} textAnchor="middle"
+              <text x={node.x} y={node.y+radius+labelYOffset(node.layerIndex ?? 0)} textAnchor="middle"
                 fill={theme.colors.text.primary} fontSize={11} fontFamily="sans-serif"
                 style={{pointerEvents:'none'}}>
-                {node.id}
+                {truncateLabel(node.id)}
               </text>
             </g>
           );

@@ -498,3 +498,105 @@ describe('filterByEitherSide', () => {
     expect(result).toBe(model);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Node workload + eksCluster assignment
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('transformToGraph: node.workload assignment from client/server k8s_deployment_name', () => {
+  it('assigns workload to source node from client_k8s_deployment_name', () => {
+    const frames: DataFrame[] = [
+      makeFrame({
+        refId: 'A',
+        clientK8sDeployNames: ['deploy-frontend'],
+        serverK8sDeployNames: ['deploy-backend'],
+        values: [100],
+      }),
+    ];
+    const result = transformToGraph(frames, defaultMapping);
+    const src = result.nodes.find((n) => n.id === 'deploy-frontend');
+    expect(src).toBeDefined();
+    expect(src!.workload).toBe('deploy-frontend');
+  });
+
+  it('assigns workload to target node from server_k8s_deployment_name', () => {
+    const frames: DataFrame[] = [
+      makeFrame({
+        refId: 'A',
+        clientK8sDeployNames: ['deploy-frontend'],
+        serverK8sDeployNames: ['deploy-backend'],
+        values: [100],
+      }),
+    ];
+    const result = transformToGraph(frames, defaultMapping);
+    const tgt = result.nodes.find((n) => n.id === 'deploy-backend');
+    expect(tgt).toBeDefined();
+    expect(tgt!.workload).toBe('deploy-backend');
+  });
+
+  it('workload is undefined when k8s_deployment_name is empty', () => {
+    const frames: DataFrame[] = [
+      makeFrame({
+        refId: 'A',
+        clientWorkloads: ['svc-a'],
+        serverWorkloads: ['svc-b'],
+        values: [50],
+      }),
+    ];
+    const result = transformToGraph(frames, defaultMapping);
+    const node = result.nodes.find((n) => n.id === 'svc-a');
+    expect(node).toBeDefined();
+    expect(node!.workload).toBeUndefined();
+  });
+});
+
+describe('transformToGraph: node.eksCluster assignment from client/server eks_cluster', () => {
+  it('assigns eksCluster to source node from client_eks_cluster', () => {
+    const frames: DataFrame[] = [
+      makeFrame({
+        refId: 'A',
+        clientK8sDeployNames: ['svc-x'],
+        serverK8sDeployNames: ['svc-y'],
+        clientEksClusters: ['cluster-prd'],
+        serverEksClusters: ['cluster-dev'],
+        values: [75],
+      }),
+    ];
+    const result = transformToGraph(frames, defaultMapping);
+    const src = result.nodes.find((n) => n.id === 'svc-x');
+    expect(src).toBeDefined();
+    expect(src!.eksCluster).toBe('cluster-prd');
+  });
+
+  it('assigns eksCluster to target node from server_eks_cluster', () => {
+    const frames: DataFrame[] = [
+      makeFrame({
+        refId: 'A',
+        clientK8sDeployNames: ['svc-x'],
+        serverK8sDeployNames: ['svc-y'],
+        clientEksClusters: ['cluster-prd'],
+        serverEksClusters: ['cluster-dev'],
+        values: [75],
+      }),
+    ];
+    const result = transformToGraph(frames, defaultMapping);
+    const tgt = result.nodes.find((n) => n.id === 'svc-y');
+    expect(tgt).toBeDefined();
+    expect(tgt!.eksCluster).toBe('cluster-dev');
+  });
+
+  it('eksCluster is undefined when column is absent', () => {
+    const frames: DataFrame[] = [
+      makeFrame({
+        refId: 'A',
+        clientK8sDeployNames: ['svc-x'],
+        serverK8sDeployNames: ['svc-y'],
+        values: [75],
+      }),
+    ];
+    const result = transformToGraph(frames, defaultMapping);
+    const node = result.nodes.find((n) => n.id === 'svc-x');
+    expect(node).toBeDefined();
+    expect(node!.eksCluster).toBeUndefined();
+  });
+});

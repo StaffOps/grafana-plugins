@@ -4,28 +4,19 @@
   "graphTooltip": 0,
   "schemaVersion": 39,
   "tags": ["servicemap", "demo"],
-  "time": { "from": "now-1h", "to": "now" },
+  "time": { "from": "now-6h", "to": "now" },
   "title": "Service Map (DAG)",
   "uid": "servicemap-demo",
-  "version": 9,
+  "version": 11,
   "templating": {
     "list": [
       {
-        "name": "environment",
-        "label": "Environment",
+        "name": "service",
+        "label": "Service",
         "type": "query",
         "datasource": { "type": "prometheus", "uid": "servicemap-metrics" },
-        "definition": "label_values(traces_service_graph_request_total, server_deployment_environment)",
-        "query": { "qryType": 1, "query": "label_values(traces_service_graph_request_total, server_deployment_environment)", "refId": "StandardVariableQuery" },
-        "includeAll": false, "multi": false, "refresh": 2, "sort": 1
-      },
-      {
-        "name": "namespace",
-        "label": "Namespace",
-        "type": "query",
-        "datasource": { "type": "prometheus", "uid": "servicemap-metrics" },
-        "definition": "label_values(traces_service_graph_request_total{server_deployment_environment=~\"$environment\"}, server_service_namespace)",
-        "query": { "qryType": 1, "query": "label_values(traces_service_graph_request_total{server_deployment_environment=~\"$environment\"}, server_service_namespace)", "refId": "StandardVariableQuery" },
+        "definition": "label_values(traces_service_graph_request_total, server)",
+        "query": { "qryType": 1, "query": "label_values(traces_service_graph_request_total, server)", "refId": "StandardVariableQuery" },
         "includeAll": true, "multi": true, "allValue": ".*",
         "current": { "text": ["All"], "value": ["$__all"] },
         "refresh": 2, "sort": 1
@@ -40,9 +31,9 @@
       "gridPos": { "h": 22, "w": 24, "x": 0, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "servicemap-metrics" },
       "targets": [
-        { "refId": "A", "datasource": { "type": "prometheus", "uid": "servicemap-metrics" }, "format": "table", "instant": true, "range": false, "expr": "sum by (client, server, connection_type, virtual_node, client_deployment_environment, server_deployment_environment, client_service_namespace, server_service_namespace, client_eks_cluster, server_eks_cluster) (rate(traces_service_graph_request_total{server_deployment_environment=~\"$environment\", server_service_namespace=~\"$namespace\"}[$__range])) or sum by (client, server, connection_type, virtual_node, client_deployment_environment, server_deployment_environment, client_service_namespace, server_service_namespace, client_eks_cluster, server_eks_cluster) (rate(traces_service_graph_request_total{client_deployment_environment=~\"$environment\", client_service_namespace=~\"$namespace\"}[$__range]))" },
-        { "refId": "B", "datasource": { "type": "prometheus", "uid": "servicemap-metrics" }, "format": "table", "instant": true, "range": false, "expr": "sum by (client, server) (rate(traces_service_graph_request_failed_total{server_deployment_environment=~\"$environment\", server_service_namespace=~\"$namespace\"}[$__range])) or sum by (client, server) (rate(traces_service_graph_request_failed_total{client_deployment_environment=~\"$environment\", client_service_namespace=~\"$namespace\"}[$__range]))" },
-        { "refId": "C", "datasource": { "type": "prometheus", "uid": "servicemap-metrics" }, "format": "table", "instant": true, "range": false, "expr": "histogram_quantile(0.95, sum by (client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{server_deployment_environment=~\"$environment\", server_service_namespace=~\"$namespace\"}[$__range]))) or histogram_quantile(0.95, sum by (client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{client_deployment_environment=~\"$environment\", client_service_namespace=~\"$namespace\"}[$__range])))" }
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "servicemap-metrics" }, "format": "table", "instant": true, "range": false, "expr": "sum by (client, server, connection_type, virtual_node, client_k8s_deployment_name, server_k8s_deployment_name, client_deployment_environment, server_deployment_environment, client_service_namespace, server_service_namespace, client_eks_cluster, server_eks_cluster) (rate(traces_service_graph_request_total{server=~\"$service\"}[$__range])) or sum by (client, server, connection_type, virtual_node, client_k8s_deployment_name, server_k8s_deployment_name, client_deployment_environment, server_deployment_environment, client_service_namespace, server_service_namespace, client_eks_cluster, server_eks_cluster) (rate(traces_service_graph_request_total{client=~\"$service\"}[$__range]))" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "servicemap-metrics" }, "format": "table", "instant": true, "range": false, "expr": "sum by (client, server) (rate(traces_service_graph_request_failed_total{server=~\"$service\"}[$__range])) or sum by (client, server) (rate(traces_service_graph_request_failed_total{client=~\"$service\"}[$__range]))" },
+        { "refId": "C", "datasource": { "type": "prometheus", "uid": "servicemap-metrics" }, "format": "table", "instant": true, "range": false, "expr": "histogram_quantile(0.95, sum by (client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{server=~\"$service\"}[$__range]))) or histogram_quantile(0.95, sum by (client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{client=~\"$service\"}[$__range])))" }
       ],
       "options": {
         "errorThreshold": 0.05,

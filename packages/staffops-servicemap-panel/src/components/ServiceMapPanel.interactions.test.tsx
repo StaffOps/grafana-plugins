@@ -16,7 +16,7 @@
  */
 
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, act } from '@testing-library/react';
 import { PanelProps, FieldType, LoadingState } from '@grafana/data';
 import { ServiceMapOptions } from '../types';
 
@@ -279,6 +279,9 @@ describe('Node hover tooltip: In/Out/Total RPS + Health + hint', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('Node click toggles focus mode', () => {
+  beforeEach(() => { jest.useFakeTimers(); });
+  afterEach(() => { jest.useRealTimers(); });
+
   it('clicking a node dims non-neighbor nodes to opacity 0.15', () => {
     const { container } = render(<ServiceMapPanel {...buildProps()} />);
     const frontendNode = getNodeByLabel(container, 'frontend');
@@ -286,6 +289,7 @@ describe('Node click toggles focus mode', () => {
 
     // Click frontend → neighbors are {frontend, api-gw}, orders-svc is non-neighbor
     fireEvent.click(frontendNode!);
+    act(() => { jest.advanceTimersByTime(300); });
 
     const ordersNode = getNodeByLabel(container, 'orders-svc');
     expect(ordersNode?.getAttribute('opacity')).toBe('0.15');
@@ -298,11 +302,13 @@ describe('Node click toggles focus mode', () => {
 
     // Click to focus
     fireEvent.click(frontendNode!);
+    act(() => { jest.advanceTimersByTime(300); });
     const ordersAfterFocus = getNodeByLabel(container, 'orders-svc');
     expect(ordersAfterFocus?.getAttribute('opacity')).toBe('0.15');
 
     // Click again to un-focus
     fireEvent.click(getNodeByLabel(container, 'frontend')!);
+    act(() => { jest.advanceTimersByTime(300); });
     const ordersAfterUnfocus = getNodeByLabel(container, 'orders-svc');
     expect(ordersAfterUnfocus?.getAttribute('opacity')).toBe('1');
   });
@@ -311,6 +317,7 @@ describe('Node click toggles focus mode', () => {
     const { container } = render(<ServiceMapPanel {...buildProps()} />);
     const frontendNode = getNodeByLabel(container, 'frontend');
     fireEvent.click(frontendNode!);
+    act(() => { jest.advanceTimersByTime(300); });
 
     const frontendAfter = getNodeByLabel(container, 'frontend');
     expect(frontendAfter?.getAttribute('opacity')).toBe('1');
@@ -320,6 +327,7 @@ describe('Node click toggles focus mode', () => {
     const { container } = render(<ServiceMapPanel {...buildProps()} />);
     const frontendNode = getNodeByLabel(container, 'frontend');
     fireEvent.click(frontendNode!);
+    act(() => { jest.advanceTimersByTime(300); });
 
     // api-gw is a neighbor of frontend
     const apiNode = getNodeByLabel(container, 'api-gw');
@@ -331,6 +339,7 @@ describe('Node click toggles focus mode', () => {
     // Click frontend → only frontend↔api-gw edge should be full, api-gw→orders-svc dimmed
     const frontendNode = getNodeByLabel(container, 'frontend');
     fireEvent.click(frontendNode!);
+    act(() => { jest.advanceTimersByTime(300); });
 
     const svg = container.querySelector('svg')!;
     const lines = Array.from(svg.querySelectorAll('line'));
@@ -351,14 +360,14 @@ describe('Ctrl/Meta+click → Explore/TraceQL URL', () => {
     mockWindowOpen.mockClear();
   });
 
-  it('Ctrl+click opens window with /explore?left= URL', () => {
+  it('Ctrl+click opens window with /explore?schemaVersion=1&panes= URL', () => {
     const { container } = render(<ServiceMapPanel {...buildProps()} />);
     const node = getNodeByLabel(container, 'api-gw');
     fireEvent.click(node!, { ctrlKey: true });
 
     expect(mockWindowOpen).toHaveBeenCalledTimes(1);
     const url = mockWindowOpen.mock.calls[0][0] as string;
-    expect(url).toMatch(/^\/explore\?left=/);
+    expect(url).toMatch(/^\/explore\?schemaVersion=1&orgId=1&panes=/);
   });
 
   it('Meta+click (macOS) opens window identically to Ctrl+click', () => {
@@ -368,7 +377,7 @@ describe('Ctrl/Meta+click → Explore/TraceQL URL', () => {
 
     expect(mockWindowOpen).toHaveBeenCalledTimes(1);
     const url = mockWindowOpen.mock.calls[0][0] as string;
-    expect(url).toMatch(/^\/explore\?left=/);
+    expect(url).toMatch(/^\/explore\?schemaVersion=1&orgId=1&panes=/);
   });
 
   it('TraceQL query uses resource.service.name = "<node.id>"', () => {
@@ -377,9 +386,9 @@ describe('Ctrl/Meta+click → Explore/TraceQL URL', () => {
     fireEvent.click(node!, { ctrlKey: true });
 
     const url = mockWindowOpen.mock.calls[0][0] as string;
-    const leftParam = url.replace('/explore?left=', '');
-    const decoded = JSON.parse(decodeURIComponent(leftParam));
-    expect(decoded.queries[0].query).toContain('resource.service.name = "orders-svc"');
+    const panesParam = url.replace(/^\/explore\?schemaVersion=1&orgId=1&panes=/, '');
+    const panes = JSON.parse(decodeURIComponent(panesParam));
+    expect(panes.svc.queries[0].query).toContain('resource.service.name = "orders-svc"');
   });
 
   it('URL contains correct datasource UID', () => {
@@ -388,8 +397,9 @@ describe('Ctrl/Meta+click → Explore/TraceQL URL', () => {
     fireEvent.click(node!, { ctrlKey: true });
 
     const url = mockWindowOpen.mock.calls[0][0] as string;
-    const decoded = JSON.parse(decodeURIComponent(url.replace('/explore?left=', '')));
-    expect(decoded.datasource).toBe('tempo-uid-abc');
+    const panesParam = url.replace(/^\/explore\?schemaVersion=1&orgId=1&panes=/, '');
+    const panes = JSON.parse(decodeURIComponent(panesParam));
+    expect(panes.svc.datasource).toBe('tempo-uid-abc');
   });
 
   it('URL contains time range from: now-1h, to: now', () => {
@@ -398,8 +408,9 @@ describe('Ctrl/Meta+click → Explore/TraceQL URL', () => {
     fireEvent.click(node!, { ctrlKey: true });
 
     const url = mockWindowOpen.mock.calls[0][0] as string;
-    const decoded = JSON.parse(decodeURIComponent(url.replace('/explore?left=', '')));
-    expect(decoded.range).toEqual({ from: 'now-1h', to: 'now' });
+    const panesParam = url.replace(/^\/explore\?schemaVersion=1&orgId=1&panes=/, '');
+    const panes = JSON.parse(decodeURIComponent(panesParam));
+    expect(panes.svc.range).toEqual({ from: 'now-1h', to: 'now' });
   });
 
   it('window.open called with _blank target and noopener', () => {
@@ -549,5 +560,157 @@ describe('onMouseLeave clears the tooltip', () => {
     expect(container.textContent).not.toMatch(/In:\s*\d/);
     expect(container.textContent).not.toMatch(/Out:\s*\d/);
     expect(container.textContent).not.toMatch(/Total:\s*\d/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. Node tooltip enrichment: Workload / Cluster / Service lines
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Node tooltip enrichment: Workload / Cluster / Service', () => {
+  /** Build props with metadata columns for testing enriched tooltip. */
+  function buildMetadataProps() {
+    const defaultOptions: ServiceMapOptions = {
+      errorThreshold: 0.05,
+      warnThreshold: 0.01,
+      animate: false,
+      traceDatasourceUid: 'tempo-uid',
+      queryMapping: { rateRefId: 'A', errorRefId: 'B', latencyRefId: 'C' },
+    };
+
+    return {
+      id: 1,
+      data: {
+        state: LoadingState.Done,
+        series: [
+          {
+            refId: 'A',
+            fields: [
+              { name: 'client_k8s_deployment_name', type: FieldType.string, values: ['frontend-deploy'], config: {} },
+              { name: 'server_k8s_deployment_name', type: FieldType.string, values: ['backend-deploy'], config: {} },
+              { name: 'client_service_workload', type: FieldType.string, values: ['frontend-deploy'], config: {} },
+              { name: 'server_service_workload', type: FieldType.string, values: ['backend-deploy'], config: {} },
+              { name: 'Value', type: FieldType.number, values: [100], config: {} },
+              { name: 'connection_type', type: FieldType.string, values: [''], config: {} },
+              { name: 'client_deployment_environment', type: FieldType.string, values: ['prd'], config: {} },
+              { name: 'server_deployment_environment', type: FieldType.string, values: ['prd'], config: {} },
+              { name: 'client_service_namespace', type: FieldType.string, values: ['ns-frontend'], config: {} },
+              { name: 'server_service_namespace', type: FieldType.string, values: ['ns-backend'], config: {} },
+              { name: 'client_eks_cluster', type: FieldType.string, values: ['eks-cluster-1'], config: {} },
+              { name: 'server_eks_cluster', type: FieldType.string, values: ['eks-cluster-2'], config: {} },
+              { name: 'client_service_name', type: FieldType.string, values: ['frontend-svc'], config: {} },
+              { name: 'server_service_name', type: FieldType.string, values: ['backend-svc'], config: {} },
+            ],
+            length: 1,
+          },
+          {
+            refId: 'B',
+            fields: [
+              { name: 'client_k8s_deployment_name', type: FieldType.string, values: ['frontend-deploy'], config: {} },
+              { name: 'server_k8s_deployment_name', type: FieldType.string, values: ['backend-deploy'], config: {} },
+              { name: 'Value', type: FieldType.number, values: [1], config: {} },
+            ],
+            length: 1,
+          },
+          {
+            refId: 'C',
+            fields: [
+              { name: 'client_k8s_deployment_name', type: FieldType.string, values: ['frontend-deploy'], config: {} },
+              { name: 'server_k8s_deployment_name', type: FieldType.string, values: ['backend-deploy'], config: {} },
+              { name: 'Value', type: FieldType.number, values: [0.05], config: {} },
+            ],
+            length: 1,
+          },
+        ],
+        timeRange: { from: {} as any, to: {} as any, raw: { from: 'now-1h', to: 'now' } },
+      },
+      timeRange: { from: {} as any, to: {} as any, raw: { from: 'now-1h', to: 'now' } },
+      timeZone: 'utc',
+      options: defaultOptions,
+      width: 800,
+      height: 600,
+      transparent: false,
+      fieldConfig: { defaults: {}, overrides: [] },
+      renderCounter: 0,
+      title: 'Service Map',
+      eventBus: { subscribe: jest.fn(), getStream: jest.fn(), publish: jest.fn(), removeAllListeners: jest.fn(), newScopedBus: jest.fn() } as any,
+      onOptionsChange: jest.fn(),
+      onFieldConfigChange: jest.fn(),
+      replaceVariables: (s: string) => '$__all',
+      onChangeTimeRange: jest.fn(),
+    } as unknown as PanelProps<ServiceMapOptions>;
+  }
+
+  it('tooltip shows Workload line when node.workload is present', () => {
+    const props = buildMetadataProps();
+    const { container } = render(<ServiceMapPanel {...props} />);
+    const node = getNodeByLabel(container, 'backend-deploy');
+    expect(node).toBeTruthy();
+
+    fireEvent.mouseMove(node!, { clientX: 200, clientY: 200 });
+
+    expect(container.textContent).toContain('Workload: backend-deploy');
+  });
+
+  it('tooltip shows Cluster line when node.eksCluster is present', () => {
+    const props = buildMetadataProps();
+    const { container } = render(<ServiceMapPanel {...props} />);
+    const node = getNodeByLabel(container, 'backend-deploy');
+    expect(node).toBeTruthy();
+
+    fireEvent.mouseMove(node!, { clientX: 200, clientY: 200 });
+
+    expect(container.textContent).toContain('Cluster: eks-cluster-2');
+  });
+
+  it('tooltip shows Service line when serviceName differs from node id', () => {
+    const props = buildMetadataProps();
+    const { container } = render(<ServiceMapPanel {...props} />);
+    const node = getNodeByLabel(container, 'backend-deploy');
+    expect(node).toBeTruthy();
+
+    fireEvent.mouseMove(node!, { clientX: 200, clientY: 200 });
+
+    expect(container.textContent).toContain('Service: backend-svc');
+  });
+
+  it('tooltip omits Workload/Cluster/Service when not present', () => {
+    // Default buildProps has no metadata columns → workload/eksCluster/serviceName undefined
+    const { container } = render(<ServiceMapPanel {...buildProps()} />);
+    const node = getNodeByLabel(container, 'frontend');
+    expect(node).toBeTruthy();
+
+    fireEvent.mouseMove(node!, { clientX: 100, clientY: 100 });
+
+    expect(container.textContent).not.toContain('Workload:');
+    expect(container.textContent).not.toContain('Cluster:');
+    expect(container.textContent).not.toContain('Service:');
+  });
+
+  it('tooltip omits Service line when serviceName equals node id', () => {
+    // Build a props where serviceName === node id (same as k8s_deployment_name)
+    const props = buildMetadataProps();
+    // Override to make serviceName = node id
+    const rateFrame = props.data.series[0] as any;
+    const svcField = rateFrame.fields.find((f: any) => f.name === 'server_service_name');
+    svcField.values = ['backend-deploy']; // same as server_k8s_deployment_name
+    const { container } = render(<ServiceMapPanel {...props} />);
+    const node = getNodeByLabel(container, 'backend-deploy');
+    expect(node).toBeTruthy();
+
+    fireEvent.mouseMove(node!, { clientX: 200, clientY: 200 });
+
+    expect(container.textContent).not.toContain('Service:');
+  });
+
+  it('client node shows correct cluster from client_eks_cluster', () => {
+    const props = buildMetadataProps();
+    const { container } = render(<ServiceMapPanel {...props} />);
+    const node = getNodeByLabel(container, 'frontend-deploy');
+    expect(node).toBeTruthy();
+
+    fireEvent.mouseMove(node!, { clientX: 100, clientY: 100 });
+
+    expect(container.textContent).toContain('Cluster: eks-cluster-1');
   });
 });
