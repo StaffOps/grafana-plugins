@@ -11,30 +11,33 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: packages/staffops-servicemap-panel
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: packages/staffops-servicemap-panel/package-lock.json
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Build frontend
+        working-directory: packages/staffops-servicemap-panel
         run: npm run build
 
       # Unsigned build: no MANIFEST.txt. The plugin id must be added to
       # GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS in the target Grafana.
       - name: Package plugin (unsigned)
+        working-directory: packages/staffops-servicemap-panel
         run: |
           PLUGIN_ID=$(jq -r .id dist/plugin.json)
           VERSION=$(jq -r .info.version dist/plugin.json)
