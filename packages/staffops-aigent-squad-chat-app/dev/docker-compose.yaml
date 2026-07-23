@@ -1,0 +1,31 @@
+# Local dev/demo stack for AIgent Squad Chat — lets you SEE the chat streaming end-to-end
+# against a mock AIgent Squad. NOT for production.
+#
+#   1. build the plugin:   docker run --rm -v "$PWD/../..:/w" -w /w/packages/staffops-aigent-squad-chat-app node:22 npm run build
+#   2. from this dir:      docker compose up -d
+#   3. open http://localhost:3000  → nav "AIgent Squad Chat" → send a message
+#   4. logs:               docker compose logs -f mock-aigent
+#   5. stop:               docker compose down
+services:
+  mock-aigent:
+    image: python:3.11-slim
+    working_dir: /app
+    volumes:
+      - ./mock-aigent:/app:ro
+    command: python server.py
+
+  grafana:
+    image: grafana/grafana:${GRAFANA_VERSION:-13.0.2}
+    depends_on:
+      - mock-aigent
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_INSTALL_PLUGINS=grafana-llm-app
+      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=staffops-aigent-squad-chat-app
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    volumes:
+      - ../dist:/var/lib/grafana/plugins/staffops-aigent-squad-chat-app
+      - ./provisioning:/etc/grafana/provisioning

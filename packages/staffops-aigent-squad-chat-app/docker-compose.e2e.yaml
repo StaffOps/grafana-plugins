@@ -1,0 +1,30 @@
+# Task 11 — E2E validation: plugin + grafana-llm-app + real AIgent Squad API.
+#
+# Prerequisites:
+#   export AIGENT_SQUAD_TOKEN=$(aws secretsmanager get-secret-value \
+#     --secret-id STAFFOPS_AIGENT_SQUAD --query SecretString --output text \
+#     --region us-east-1 | python3 -c "import json,sys; print(json.load(sys.stdin)['internal-api-token'])")
+#
+# Run:
+#   docker compose -f docker-compose.e2e.yaml up -d
+#   # open http://localhost:3000 → AIgent Squad Chat (left nav)
+#   docker compose -f docker-compose.e2e.yaml down
+#
+services:
+  grafana:
+    image: grafana/grafana:13.0.2
+    environment:
+      - GF_INSTALL_PLUGINS=grafana-llm-app
+      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=staffops-aigent-squad-chat-app
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_LOG_LEVEL=info
+      - AIGENT_SQUAD_TOKEN=${AIGENT_SQUAD_TOKEN}
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount the built plugin
+      - ./dist:/var/lib/grafana/plugins/staffops-aigent-squad-chat-app:ro
+      # Provisioning: enable the app plugin + configure LLM provider
+      - ./provisioning:/etc/grafana/provisioning:ro

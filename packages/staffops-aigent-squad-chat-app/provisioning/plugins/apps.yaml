@@ -1,0 +1,20 @@
+apiVersion: 1
+
+apps:
+  # 1. Enable the grafana-llm-app with AIgent Squad as the OpenAI-compatible provider.
+  #    The token comes from env var AIGENT_SQUAD_TOKEN (never hardcoded).
+  - type: 'grafana-llm-app'
+    org_id: 1
+    disabled: false
+    jsonData:
+      openAI:
+        provider: openai
+        url: https://aigent-squad.bdc.app.br
+    secureJsonData:
+      openAIKey: $__env{AIGENT_SQUAD_TOKEN}
+
+  # 2. Enable the chat plugin itself (nav page).
+  - type: 'staffops-aigent-squad-chat-app'
+    org_id: 1
+    org_name: 'staffops'
+    disabled: false
