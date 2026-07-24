@@ -11,10 +11,10 @@ orchestration and tool execution (Grafana / Loki / Tempo / PromQL / Kubernetes) 
 
 ```mermaid
 graph LR
-    U[User] --> UI[Chat page - React]
-    UI -->|@grafana/llm streamChatCompletions| LLM[Grafana LLM app]
-    LLM -->|OpenAI /v1/chat/completions| SQUAD[AIgent Squad]
-    SQUAD --> TOOLS[(Loki / Tempo / PromQL / K8s)]
+    U[User] --> UI["Chat page (React)"]
+    UI -->|"grafana/llm"| LLM["Grafana LLM app"]
+    LLM -->|"OpenAI chat/completions"| SQUAD["AIgent Squad"]
+    SQUAD --> TOOLS[("Loki / Tempo / PromQL / K8s")]
 ```
 
 ## Features

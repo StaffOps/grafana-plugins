@@ -7,13 +7,13 @@ but each plugin ships and versions on its own.
 ```mermaid
 graph TD
     subgraph Monorepo
-        WS[pnpm-workspace.yaml] --> P1[packages/staffops-servicemap-panel]
-        WS --> P2[packages/staffops-aigent-squad-chat-app]
-        SPECS[specs/*] -.spec-driven.-> P1
-        SPECS -.spec-driven.-> P2
+        WS["pnpm-workspace.yaml"] --> P1["staffops-servicemap-panel"]
+        WS --> P2["staffops-aigent-squad-chat-app"]
+        SPECS["specs"] -. spec-driven .-> P1
+        SPECS -. spec-driven .-> P2
     end
-    P1 -->|DataFrames| DS[(Prometheus / Tempo)]
-    P2 -->|@grafana/llm| LLM[Grafana LLM app] --> SQUAD[AIgent Squad]
+    P1 -->|DataFrames| DS[("Prometheus / Tempo")]
+    P2 -->|"grafana/llm"| LLM["Grafana LLM app"] --> SQUAD["AIgent Squad"]
 ```
 
 ## Pages
