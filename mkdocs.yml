@@ -1,0 +1,116 @@
+site_name: StaffOps — Grafana Plugins
+site_description: Monorepo of Grafana plugins (panels and apps) for the StaffOps platform
+site_url: https://staffops.github.io/grafana-plugins/
+repo_url: https://github.com/StaffOps/grafana-plugins
+repo_name: StaffOps/grafana-plugins
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  custom_dir: overrides
+  logo: assets/logo.png
+  favicon: assets/logo.png
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - navigation.indexes
+    - navigation.instant
+    - navigation.path
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+  language: en
+
+# Some docs link to repo artifacts outside the site tree (../packages/…, ../specs/…) —
+# correct as relative paths on GitHub, but not part of the built site. Tolerate those so
+# `--strict` stays green, while keeping nav and anchors strict.
+validation:
+  nav:
+    omitted_files: warn
+  links:
+    not_found: ignore
+    unrecognized_links: ignore
+    anchors: warn
+
+nav:
+  - Home:
+      - index.md
+  - Architecture:
+      - architecture/index.md
+      - Monorepo Layout: architecture/monorepo.md
+      - Build & Tooling: architecture/build-tooling.md
+  - Plugins:
+      - plugins/index.md
+      - Service Map Panel:
+          - plugins/servicemap-panel/index.md
+          - Configuration: plugins/servicemap-panel/configuration.md
+      - AIgent Squad Chat:
+          - plugins/aigent-squad-chat/index.md
+          - Architecture: plugins/aigent-squad-chat/architecture.md
+          - Configuration: plugins/aigent-squad-chat/configuration.md
+          - Reasoning & Trace: plugins/aigent-squad-chat/reasoning.md
+  - Development:
+      - development/index.md
+      - Building & Testing: development/building.md
+      - Creating a Plugin: development/creating-a-plugin.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - https://unpkg.com/mermaid/dist/mermaid.min.js
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/StaffOps
+  generator: false
+
+copyright: Copyright &copy; StaffOps Contributors — Apache 2.0
