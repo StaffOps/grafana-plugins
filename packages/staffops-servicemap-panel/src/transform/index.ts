@@ -3,8 +3,7 @@
  *
  * Node identity precedence (per side):
  *   1. k8s_deployment_name (client_k8s_deployment_name / server_k8s_deployment_name)
- *   2. service_workload (client_service_workload / server_service_workload) — transition fallback
- *   3. service.name bare (client / server) — v1 backward-compat
+ *   2. service.name bare (client / server) — v1 backward-compat
  *
  * Each node carries env/namespace/service_name/eks_cluster.
  * Edges annotated with connection_type, virtual_node, cross-boundary flags.
@@ -21,7 +20,9 @@ import {
   GraphEdge,
   QueryRoleMapping,
   ConnectionTypeFilter,
+  HealthFilter,
 } from '../types';
+import type { HealthStatus } from '../viz';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -88,21 +89,11 @@ function isNameUnresolved(name: string): boolean {
 }
 
 /**
- * Returns true if the workload identity is "unresolved" — meaning BOTH
- * k8s_deployment_name and service_workload are empty/app/ReplicaSet-hash.
- *
- * When called with a single argument (backward-compat), checks that value alone.
+ * Returns true if the resolved node id is "unresolved" — meaning it is
+ * empty, 'app', or matches the ReplicaSet hash pattern.
  */
-export function isUnresolvedWorkload(
-  k8sDeploymentName: string,
-  serviceWorkload?: string
-): boolean {
-  // Single-arg backward-compat (nodeId already resolved)
-  if (serviceWorkload === undefined) {
-    return isNameUnresolved(k8sDeploymentName);
-  }
-  // Both must be unresolved for the node to be flagged
-  return isNameUnresolved(k8sDeploymentName) && isNameUnresolved(serviceWorkload);
+export function isUnresolvedWorkload(resolvedId: string): boolean {
+  return isNameUnresolved(resolvedId);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -160,32 +151,23 @@ function classifyFrame(
 
 /**
  * Resolves the node identity from the priority chain.
- * Returns the first non-empty/non-'app' value, or falls back to the raw value
- * if all are present but unresolved (we still need an identity for the graph).
+ * Returns k8sDeploymentName if non-empty and non-trivial (not 'app', not ReplicaSet hash),
+ * otherwise falls back to the bare service.name.
  *
- * Priority: k8sDeploymentName > serviceWorkload > bare (service.name)
- * Returns empty string only if ALL are empty.
+ * Priority: k8sDeploymentName > bare (service.name)
+ * Returns empty string only if BOTH are empty.
  */
-function resolveNodeId(k8sDeploymentName: string, serviceWorkload: string, bare: string): string {
+function resolveNodeId(k8sDeploymentName: string, bare: string): string {
   // k8s_deployment_name is preferred when present AND non-trivial
   if (k8sDeploymentName && k8sDeploymentName !== 'app' && !REPLICASET_HASH_RE.test(k8sDeploymentName)) {
     return k8sDeploymentName;
   }
-  // If k8s_deployment_name has a value (even if "unresolved"), still use it over nothing
-  if (k8sDeploymentName) {
-    // But check if service_workload is better (non-empty, non-app, non-hash)
-    if (serviceWorkload && serviceWorkload !== 'app' && !REPLICASET_HASH_RE.test(serviceWorkload)) {
-      return serviceWorkload;
-    }
-    // Both are "unresolved" — use k8s_deployment_name as identity
-    return k8sDeploymentName;
+  // Fall back to bare service.name if available
+  if (bare) {
+    return bare;
   }
-  // No k8s_deployment_name — fall back to service_workload
-  if (serviceWorkload) {
-    return serviceWorkload;
-  }
-  // Last resort — bare service.name (v1 compat)
-  return bare;
+  // Last resort — use k8s_deployment_name even if unresolved (identity needed)
+  return k8sDeploymentName;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -210,8 +192,6 @@ interface EdgeAccumulator {
   serverEksCluster: string;
   clientK8sDeploymentName: string;
   serverK8sDeploymentName: string;
-  clientServiceWorkload: string;
-  serverServiceWorkload: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -223,8 +203,7 @@ interface EdgeAccumulator {
  *
  * Node identity precedence per side:
  *   1. k8s_deployment_name (client_k8s_deployment_name / server_k8s_deployment_name)
- *   2. service_workload (client_service_workload / server_service_workload)
- *   3. bare service.name (client / server) — v1 backward-compat
+ *   2. bare service.name (client / server) — v1 backward-compat
  *
  * @param frames - DataFrames from panel query runner
  * @param mapping - User-configured query role mapping
@@ -247,19 +226,17 @@ export function transformToGraph(frames: DataFrame[], mapping: QueryRoleMapping)
       continue;
     }
 
-    // Node identity columns — precedence: k8s_deployment_name > service_workload > bare client/server
+    // Node identity columns — precedence: k8s_deployment_name > bare client/server
     const clientK8sDeployField = findField(frame, 'client_k8s_deployment_name');
     const serverK8sDeployField = findField(frame, 'server_k8s_deployment_name');
-    const clientWorkloadField = findField(frame, 'client_service_workload');
-    const serverWorkloadField = findField(frame, 'server_service_workload');
     const clientBareField = findField(frame, 'client');
     const serverBareField = findField(frame, 'server');
 
     // At least one pair of identity columns must exist
-    if (!clientK8sDeployField && !clientWorkloadField && !clientBareField) {
+    if (!clientK8sDeployField && !clientBareField) {
       continue;
     }
-    if (!serverK8sDeployField && !serverWorkloadField && !serverBareField) {
+    if (!serverK8sDeployField && !serverBareField) {
       continue;
     }
 
@@ -281,16 +258,14 @@ export function transformToGraph(frames: DataFrame[], mapping: QueryRoleMapping)
       frame.fields.find((f) => f.type === 'number' && f.name.toLowerCase() !== 'time');
 
     for (let i = 0; i < frame.length; i++) {
-      // Resolve node identity per side: k8s_deployment_name -> service_workload -> bare
+      // Resolve node identity per side: k8s_deployment_name -> bare
       const clientK8sDeploy = stringValue(clientK8sDeployField, i);
       const serverK8sDeploy = stringValue(serverK8sDeployField, i);
-      const clientServiceWorkload = stringValue(clientWorkloadField, i);
-      const serverServiceWorkload = stringValue(serverWorkloadField, i);
       const clientBare = stringValue(clientBareField, i);
       const serverBare = stringValue(serverBareField, i);
 
-      const clientNodeId = resolveNodeId(clientK8sDeploy, clientServiceWorkload, clientBare);
-      const serverNodeId = resolveNodeId(serverK8sDeploy, serverServiceWorkload, serverBare);
+      const clientNodeId = resolveNodeId(clientK8sDeploy, clientBare);
+      const serverNodeId = resolveNodeId(serverK8sDeploy, serverBare);
 
       if (!clientNodeId || !serverNodeId) {
         continue;
@@ -317,8 +292,6 @@ export function transformToGraph(frames: DataFrame[], mapping: QueryRoleMapping)
           serverEksCluster: '',
           clientK8sDeploymentName: clientK8sDeploy,
           serverK8sDeploymentName: serverK8sDeploy,
-          clientServiceWorkload: clientServiceWorkload,
-          serverServiceWorkload: serverServiceWorkload,
         };
         edgeMap.set(key, acc);
       }
@@ -389,7 +362,6 @@ export function transformToGraph(frames: DataFrame[], mapping: QueryRoleMapping)
     isVirtualClient: boolean;
     isDatabase: boolean;
     k8sDeploymentName: string;
-    serviceWorkload: string;
   }>();
 
   const ensureNode = (id: string) => {
@@ -405,7 +377,6 @@ export function transformToGraph(frames: DataFrame[], mapping: QueryRoleMapping)
         isVirtualClient: false,
         isDatabase: false,
         k8sDeploymentName: '',
-        serviceWorkload: '',
       });
     }
     return nodeMap.get(id)!;
@@ -451,9 +422,6 @@ export function transformToGraph(frames: DataFrame[], mapping: QueryRoleMapping)
     if (acc.clientK8sDeploymentName) {
       srcNode.k8sDeploymentName = acc.clientK8sDeploymentName;
     }
-    if (acc.clientServiceWorkload) {
-      srcNode.serviceWorkload = acc.clientServiceWorkload;
-    }
 
     // Target node (server side)
     const tgtNode = ensureNode(acc.target);
@@ -479,9 +447,6 @@ export function transformToGraph(frames: DataFrame[], mapping: QueryRoleMapping)
     if (acc.serverK8sDeploymentName) {
       tgtNode.k8sDeploymentName = acc.serverK8sDeploymentName;
     }
-    if (acc.serverServiceWorkload) {
-      tgtNode.serviceWorkload = acc.serverServiceWorkload;
-    }
   }
 
   // Build nodes
@@ -497,7 +462,7 @@ export function transformToGraph(frames: DataFrame[], mapping: QueryRoleMapping)
       serviceName: data.serviceName || undefined,
       eksCluster: data.eksCluster || undefined,
       workload: data.k8sDeploymentName || undefined,
-      unresolvedWorkload: isUnresolvedWorkload(data.k8sDeploymentName, data.serviceWorkload),
+      unresolvedWorkload: isUnresolvedWorkload(id),
       isVirtualServer: data.isVirtualServer || undefined,
       isVirtualClient: data.isVirtualClient || undefined,
       isDatabase: data.isDatabase || undefined,
@@ -605,6 +570,110 @@ export function filterByEitherSide(
 
   return {
     nodes: model.nodes.filter((n) => nodeIds.has(n.id)),
+    edges: filteredEdges,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Health filter
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Filters a GraphModel by node health status.
+ * Pure function — does not mutate input.
+ *
+ * @param model - The graph model to filter.
+ * @param healthMap - Pre-computed node health map (node id → HealthStatus).
+ * @param filter - Which nodes to keep: 'all', 'healthy', or 'unhealthy'.
+ * @returns Filtered GraphModel.
+ */
+export function filterByHealth(
+  model: GraphModel,
+  healthMap: Map<string, HealthStatus>,
+  filter: HealthFilter
+): GraphModel {
+  if (!model || filter === 'all') {
+    return model;
+  }
+
+  if (filter === 'healthy') {
+    // Show all healthy nodes and edges where both endpoints are healthy.
+    // Nodes without edges still appear (they are healthy leaf/root services).
+
+    const healthyNodes = new Set<string>();
+    for (const node of model.nodes) {
+      if ((healthMap.get(node.id) ?? 'ok') === 'ok') {
+        healthyNodes.add(node.id);
+      }
+    }
+
+    if (healthyNodes.size === 0) {
+      return { nodes: [], edges: [] };
+    }
+
+    const filteredEdges = model.edges.filter(
+      (e) => healthyNodes.has(e.source) && healthyNodes.has(e.target)
+    );
+
+    return {
+      nodes: model.nodes.filter((n) => healthyNodes.has(n.id)),
+      edges: filteredEdges,
+    };
+  }
+
+  // 'unhealthy' — show unhealthy nodes + full upstream path (all parents
+  // that lead to them). This gives context: the user sees WHERE traffic
+  // originates and the complete chain to the problematic node.
+
+  // 1. Identify unhealthy seed nodes
+  const unhealthyNodes = new Set<string>();
+  for (const node of model.nodes) {
+    const status = healthMap.get(node.id) ?? 'ok';
+    if (status === 'warn' || status === 'crit') {
+      unhealthyNodes.add(node.id);
+    }
+  }
+
+  if (unhealthyNodes.size === 0) {
+    return { nodes: [], edges: [] };
+  }
+
+  // 2. Build reverse adjacency (target → sources) for upstream BFS
+  const reverseAdj = new Map<string, string[]>();
+  for (const edge of model.edges) {
+    if (!reverseAdj.has(edge.target)) {
+      reverseAdj.set(edge.target, []);
+    }
+    reverseAdj.get(edge.target)!.push(edge.source);
+  }
+
+  // 3. BFS upstream from every unhealthy node to collect all ancestors
+  const visibleNodes = new Set(unhealthyNodes);
+  const queue = Array.from(unhealthyNodes);
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const parent of reverseAdj.get(current) ?? []) {
+      if (!visibleNodes.has(parent)) {
+        visibleNodes.add(parent);
+        queue.push(parent);
+      }
+    }
+  }
+
+  // 4. Include downstream children ONLY if they are also unhealthy (cascading)
+  for (const edge of model.edges) {
+    if (unhealthyNodes.has(edge.source) && unhealthyNodes.has(edge.target)) {
+      visibleNodes.add(edge.target);
+    }
+  }
+
+  // 5. Keep edges where both endpoints are visible
+  const filteredEdges = model.edges.filter(
+    (e) => visibleNodes.has(e.source) && visibleNodes.has(e.target)
+  );
+
+  return {
+    nodes: model.nodes.filter((n) => visibleNodes.has(n.id)),
     edges: filteredEdges,
   };
 }

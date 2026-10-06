@@ -34,6 +34,31 @@ export function buildPanelOptions(builder: PanelOptionsEditorBuilder<ServiceMapO
         step: 0.01,
       },
     })
+    .addSelect({
+      path: 'healthFilter',
+      name: 'Health filter',
+      description: 'Filter nodes by their health status (based on incident edge error ratios)',
+      defaultValue: 'all',
+      settings: {
+        options: [
+          { value: 'all', label: 'All' },
+          { value: 'healthy', label: 'Healthy only' },
+          { value: 'unhealthy', label: 'Unhealthy only' },
+        ],
+      },
+    })
+    .addSelect({
+      path: 'layoutDirection',
+      name: 'Layout direction',
+      description: 'Direction of the DAG layout flow',
+      defaultValue: 'top-down',
+      settings: {
+        options: [
+          { value: 'top-down', label: 'Top → Down' },
+          { value: 'left-right', label: 'Left → Right' },
+        ],
+      },
+    })
     .addBooleanSwitch({
       path: 'animate',
       name: 'Animate traffic',

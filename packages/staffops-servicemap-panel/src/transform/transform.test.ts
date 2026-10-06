@@ -34,10 +34,10 @@ function makeFrame(opts: {
     fields.push({ name: 'server_k8s_deployment_name', type: FieldType.string, values: opts.serverK8sDeployNames, config: {} });
   }
   if (opts.clientWorkloads) {
-    fields.push({ name: 'client_service_workload', type: FieldType.string, values: opts.clientWorkloads, config: {} });
+    fields.push({ name: 'client', type: FieldType.string, values: opts.clientWorkloads, config: {} });
   }
   if (opts.serverWorkloads) {
-    fields.push({ name: 'server_service_workload', type: FieldType.string, values: opts.serverWorkloads, config: {} });
+    fields.push({ name: 'server', type: FieldType.string, values: opts.serverWorkloads, config: {} });
   }
   fields.push({ name: 'Value', type: FieldType.number, values: opts.values, config: {} });
   if (opts.connectionTypes) {
@@ -79,39 +79,13 @@ function makeFrame(opts: {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('isUnresolvedWorkload', () => {
-  describe('single-arg (backward compat)', () => {
-    it('returns true for "app"', () => { expect(isUnresolvedWorkload('app')).toBe(true); });
-    it('returns true for empty string', () => { expect(isUnresolvedWorkload('')).toBe(true); });
-    it('returns true for ReplicaSet hash 6 chars', () => { expect(isUnresolvedWorkload('myapp-7f8b9c')).toBe(true); });
-    it('returns true for ReplicaSet hash 10 chars', () => { expect(isUnresolvedWorkload('worker-6a7b8c9d0e')).toBe(true); });
-    it('returns false for normal workload', () => { expect(isUnresolvedWorkload('dpm-people-api')).toBe(false); });
-    it('returns false for workload with numbers not hex-only', () => { expect(isUnresolvedWorkload('api-v2')).toBe(false); });
-    it('returns false for short suffix', () => { expect(isUnresolvedWorkload('app-abc')).toBe(false); });
-  });
-
-  describe('two-arg (k8s_deployment_name, service_workload)', () => {
-    it('returns false when k8s_deployment_name is valid', () => {
-      expect(isUnresolvedWorkload('my-deploy', 'app')).toBe(false);
-    });
-    it('returns false when service_workload is valid (k8s empty)', () => {
-      expect(isUnresolvedWorkload('', 'real-workload')).toBe(false);
-    });
-    it('returns true when both are "app"', () => {
-      expect(isUnresolvedWorkload('app', 'app')).toBe(true);
-    });
-    it('returns true when both are empty', () => {
-      expect(isUnresolvedWorkload('', '')).toBe(true);
-    });
-    it('returns true when k8s is hash and workload is "app"', () => {
-      expect(isUnresolvedWorkload('pod-6a7b8c', 'app')).toBe(true);
-    });
-    it('returns true when k8s is "app" and workload is empty', () => {
-      expect(isUnresolvedWorkload('app', '')).toBe(true);
-    });
-    it('returns false when k8s is hash but workload is valid', () => {
-      expect(isUnresolvedWorkload('pod-6a7b8c', 'real-svc')).toBe(false);
-    });
-  });
+  it('returns true for "app"', () => { expect(isUnresolvedWorkload('app')).toBe(true); });
+  it('returns true for empty string', () => { expect(isUnresolvedWorkload('')).toBe(true); });
+  it('returns true for ReplicaSet hash 6 chars', () => { expect(isUnresolvedWorkload('myapp-7f8b9c')).toBe(true); });
+  it('returns true for ReplicaSet hash 10 chars', () => { expect(isUnresolvedWorkload('worker-6a7b8c9d0e')).toBe(true); });
+  it('returns false for normal workload', () => { expect(isUnresolvedWorkload('dpm-people-api')).toBe(false); });
+  it('returns false for workload with numbers not hex-only', () => { expect(isUnresolvedWorkload('api-v2')).toBe(false); });
+  it('returns false for short suffix', () => { expect(isUnresolvedWorkload('app-abc')).toBe(false); });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -142,7 +116,7 @@ describe('transformToGraph — node identity', () => {
     expect(result.edges).toHaveLength(0);
   });
 
-  it('prefers k8s_deployment_name over service_workload', () => {
+  it('prefers k8s_deployment_name over bare client/server', () => {
     const rate = makeFrame({
       refId: 'A',
       clientK8sDeployNames: ['frontend-deploy'],
@@ -157,7 +131,7 @@ describe('transformToGraph — node identity', () => {
     expect(result.edges[0].target).toBe('backend-deploy');
   });
 
-  it('falls back to service_workload when k8s_deployment_name is empty', () => {
+  it('falls back to bare client/server when k8s_deployment_name is empty', () => {
     const rate = makeFrame({
       refId: 'A',
       clientK8sDeployNames: [''],
@@ -170,7 +144,7 @@ describe('transformToGraph — node identity', () => {
     expect(result.nodes.map(n => n.id).sort()).toEqual(['svc-a', 'svc-b']);
   });
 
-  it('falls back to service_workload when k8s_deployment_name is "app"', () => {
+  it('falls back to bare client/server when k8s_deployment_name is "app"', () => {
     const rate = makeFrame({
       refId: 'A',
       clientK8sDeployNames: ['app'],
@@ -183,7 +157,7 @@ describe('transformToGraph — node identity', () => {
     expect(result.nodes.map(n => n.id).sort()).toEqual(['real-client', 'real-server']);
   });
 
-  it('falls back to service_workload when k8s_deployment_name is ReplicaSet hash', () => {
+  it('falls back to bare client/server when k8s_deployment_name is ReplicaSet hash', () => {
     const rate = makeFrame({
       refId: 'A',
       clientK8sDeployNames: ['pod-6a7b8c'],
@@ -196,22 +170,20 @@ describe('transformToGraph — node identity', () => {
     expect(result.nodes.map(n => n.id).sort()).toEqual(['actual-backend', 'actual-svc']);
   });
 
-  it('uses k8s_deployment_name even if unresolved when service_workload also unresolved', () => {
+  it('uses k8s_deployment_name when unresolved but no bare fallback available', () => {
     const rate = makeFrame({
       refId: 'A',
       clientK8sDeployNames: ['pod-6a7b8c'],
       serverK8sDeployNames: ['app'],
-      clientWorkloads: ['app'],
-      serverWorkloads: ['app'],
       values: [10],
     });
     const result = transformToGraph([rate], defaultMapping);
-    // k8s_deployment_name wins when service_workload is also unresolved
+    // No bare columns → falls back to k8s_deployment_name even if unresolved
     expect(result.edges[0].source).toBe('pod-6a7b8c');
     expect(result.edges[0].target).toBe('app');
   });
 
-  it('works with only service_workload columns (no k8s_deployment_name)', () => {
+  it('works with only bare client/server columns (no k8s_deployment_name)', () => {
     const rate = makeFrame({
       refId: 'A',
       clientWorkloads: ['frontend', 'frontend'],
@@ -244,13 +216,12 @@ describe('transformToGraph — node identity', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('transformToGraph — unresolvedWorkload flag', () => {
-  it('flags nodes where both k8s_deployment_name and service_workload are "app"', () => {
+  it('flags nodes whose resolved id is "app"', () => {
+    // k8s_deployment_name is 'app', no bare fallback → resolved id is 'app' → unresolved
     const rate = makeFrame({
       refId: 'A',
       clientK8sDeployNames: ['app'],
       serverK8sDeployNames: ['good-deploy'],
-      clientWorkloads: ['app'],
-      serverWorkloads: ['good-workload'],
       values: [10],
     });
     const result = transformToGraph([rate], defaultMapping);
@@ -260,15 +231,11 @@ describe('transformToGraph — unresolvedWorkload flag', () => {
     expect(serverNode?.unresolvedWorkload).toBe(false);
   });
 
-  it('flags nodes where both are empty', () => {
-    // When both k8s and workload are empty, resolveNodeId falls through to bare
-    // but the unresolved flag checks the raw values
+  it('does NOT flag nodes with valid resolved id', () => {
     const rate = makeFrame({
       refId: 'A',
       clientK8sDeployNames: ['valid-deploy'],
       serverK8sDeployNames: ['valid-deploy'],
-      clientWorkloads: ['valid-wl'],
-      serverWorkloads: ['valid-wl'],
       values: [10],
     });
     const result = transformToGraph([rate], defaultMapping);
@@ -276,20 +243,18 @@ describe('transformToGraph — unresolvedWorkload flag', () => {
     expect(node?.unresolvedWorkload).toBe(false);
   });
 
-  it('is NOT flagged when k8s_deployment_name is valid but service_workload is "app"', () => {
+  it('is NOT flagged when k8s_deployment_name resolves to a valid name', () => {
     const rate = makeFrame({
       refId: 'A',
       clientK8sDeployNames: ['my-api'],
       serverK8sDeployNames: ['my-backend'],
-      clientWorkloads: ['app'],
-      serverWorkloads: ['app'],
       values: [100],
     });
     const result = transformToGraph([rate], defaultMapping);
     expect(result.nodes.every(n => n.unresolvedWorkload === false)).toBe(true);
   });
 
-  it('is NOT flagged when service_workload is valid but k8s_deployment_name is empty', () => {
+  it('is NOT flagged when bare fallback is a valid name', () => {
     const rate = makeFrame({
       refId: 'A',
       clientK8sDeployNames: [''],
@@ -313,8 +278,6 @@ describe('transformToGraph — metadata & edges', () => {
       refId: 'A',
       clientK8sDeployNames: ['frontend'],
       serverK8sDeployNames: ['backend'],
-      clientWorkloads: ['fe-wl'],
-      serverWorkloads: ['be-wl'],
       values: [100],
       clientEnvs: ['prd'],
       serverEnvs: ['prd'],
@@ -343,8 +306,6 @@ describe('transformToGraph — metadata & edges', () => {
       refId: 'A',
       clientK8sDeployNames: ['svc-a'],
       serverK8sDeployNames: ['svc-b'],
-      clientWorkloads: ['wl-a'],
-      serverWorkloads: ['wl-b'],
       values: [50],
       clientEnvs: ['prd'],
       serverEnvs: ['dev'],
@@ -359,8 +320,6 @@ describe('transformToGraph — metadata & edges', () => {
       refId: 'A',
       clientK8sDeployNames: ['api', 'ingress'],
       serverK8sDeployNames: ['postgres', 'api'],
-      clientWorkloads: ['api', 'ingress'],
-      serverWorkloads: ['postgres', 'api'],
       values: [80, 120],
       connectionTypes: ['database', ''],
       virtualNodes: ['', 'client'],
@@ -377,16 +336,12 @@ describe('transformToGraph — metadata & edges', () => {
       refId: 'A',
       clientK8sDeployNames: ['a'],
       serverK8sDeployNames: ['b'],
-      clientWorkloads: ['a'],
-      serverWorkloads: ['b'],
       values: [100],
     });
     const error = makeFrame({
       refId: 'B',
       clientK8sDeployNames: ['a'],
       serverK8sDeployNames: ['b'],
-      clientWorkloads: ['a'],
-      serverWorkloads: ['b'],
       values: [5],
     });
     const result = transformToGraph([rate, error], defaultMapping);

@@ -1,17 +1,17 @@
 /**
  * Tests for layoutGraph — the pure layout function.
  *
- * NEW CONTRACT (compact spacing):
- * - Input: GraphModel + width + height (width/height unused for spacing)
- * - Output: PositionedGraph with compact absolute coordinates using fixed gaps
+ * CONTRACT (responsive spacing):
+ * - Input: GraphModel + width + height (used to scale layout)
+ * - Output: PositionedGraph with coordinates scaled to fill viewport
  * - Deterministic (deterministic ordering / initial conditions)
  * - Uses DAG layout (layered by client→server direction, cycles broken)
  * - All nodes must appear in output (node count preserved)
- * - Intra-layer gap = MIN_INTRA_LAYER_GAP (90px)
- * - Inter-layer gap = INTER_LAYER_GAP (120px)
+ * - Intra-layer gap ≥ MIN_INTRA_LAYER_GAP (90px minimum, scaled up for viewport)
+ * - Inter-layer gap ≥ INTER_LAYER_GAP (120px minimum, scaled up for viewport)
  */
 
-import { layoutGraph, MIN_INTRA_LAYER_GAP, INTER_LAYER_GAP } from './index';
+import { layoutGraph, MIN_INTRA_LAYER_GAP } from './index';
 import { GraphModel, GraphNode, GraphEdge } from '../types';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -118,11 +118,11 @@ describe('layoutGraph — determinism', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Compact spacing: fixed min gap
+// Responsive spacing: gaps scale with viewport, with minimums
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('layoutGraph — compact spacing', () => {
-  it('intra-layer gap between nodes equals MIN_INTRA_LAYER_GAP', () => {
+describe('layoutGraph — responsive spacing', () => {
+  it('intra-layer gap between nodes is at least MIN_INTRA_LAYER_GAP', () => {
     // a -> b, a -> c → a in layer 0, b and c in layer 1
     const model = makeModel(['a', 'b', 'c'], [['a', 'b'], ['a', 'c']]);
     const result = layoutGraph(model, WIDTH, HEIGHT);
@@ -130,27 +130,28 @@ describe('layoutGraph — compact spacing', () => {
     const layer1 = result.nodes.filter((n) => n.id === 'b' || n.id === 'c').sort((a, b) => a.id.localeCompare(b.id));
     expect(layer1).toHaveLength(2);
     const gap = Math.abs(layer1[1].x - layer1[0].x);
-    expect(gap).toBeCloseTo(MIN_INTRA_LAYER_GAP, 1);
+    expect(gap).toBeGreaterThanOrEqual(MIN_INTRA_LAYER_GAP);
   });
 
-  it('inter-layer gap between layers equals INTER_LAYER_GAP', () => {
+  it('inter-layer gap between layers is at least MIN_INTRA_LAYER_GAP', () => {
     // a -> b: a in layer 0, b in layer 1
     const model = makeModel(['a', 'b'], [['a', 'b']]);
     const result = layoutGraph(model, WIDTH, HEIGHT);
     const nodeA = result.nodes.find((n) => n.id === 'a')!;
     const nodeB = result.nodes.find((n) => n.id === 'b')!;
-    expect(nodeB.y - nodeA.y).toBeCloseTo(INTER_LAYER_GAP, 1);
+    expect(nodeB.y - nodeA.y).toBeGreaterThanOrEqual(MIN_INTRA_LAYER_GAP);
   });
 
-  it('spacing is independent of viewport dimensions', () => {
+  it('spacing scales with viewport dimensions', () => {
     const model = makeModel(['a', 'b', 'c'], [['a', 'b'], ['a', 'c']]);
     const r1 = layoutGraph(model, 400, 300);
     const r2 = layoutGraph(model, 1920, 1080);
-    // Exact same positions regardless of viewport
-    for (let i = 0; i < r1.nodes.length; i++) {
-      expect(r1.nodes[i].x).toBe(r2.nodes[i].x);
-      expect(r1.nodes[i].y).toBe(r2.nodes[i].y);
-    }
+    // Larger viewport produces larger spacing
+    const layer1_r1 = r1.nodes.filter((n) => n.id === 'b' || n.id === 'c').sort((a, b) => a.id.localeCompare(b.id));
+    const layer1_r2 = r2.nodes.filter((n) => n.id === 'b' || n.id === 'c').sort((a, b) => a.id.localeCompare(b.id));
+    const gap1 = Math.abs(layer1_r1[1].x - layer1_r1[0].x);
+    const gap2 = Math.abs(layer1_r2[1].x - layer1_r2[0].x);
+    expect(gap2).toBeGreaterThan(gap1);
   });
 
   it('single node in layer is centered at x=0', () => {

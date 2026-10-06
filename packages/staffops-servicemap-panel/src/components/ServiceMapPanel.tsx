@@ -16,8 +16,8 @@ import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react'
 import { PanelProps } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
 import { css } from '@emotion/css';
-import { ServiceMapOptions, GraphEdge, GraphNode, PositionedNode, PositionedGraph } from '../types';
-import { transformToGraph, filterGraph, FilterOptions } from '../transform';
+import { ServiceMapOptions, GraphEdge, GraphNode, PositionedNode, PositionedGraph, HealthFilter } from '../types';
+import { transformToGraph, filterGraph, filterByHealth, FilterOptions } from '../transform';
 import { computeBlastRadius } from '../transform/blastRadius';
 import { matchAlerts } from '../transform/alertOverlay';
 import { buildTracesDrillUrl, buildDbClientDrillUrl, buildLogsDrillUrl, buildDashboardUrl, buildEdgeTracesDrillUrl } from '../transform/drilldown';
@@ -27,7 +27,7 @@ import { classifyNode, NodeKind, NODE_KIND_COLORS, NODE_KIND_LABELS } from '../v
 import { edgePath } from '../geometry';
 import { drillTarget } from '../drill/drillTarget';
 import { reachableSubgraph } from '../drill/reachableSubgraph';
-import { truncateLabel, labelYOffset } from './labelUtils';
+import { labelYOffset } from './labelUtils';
 import {
   ViewState,
   zoomAtPoint,
@@ -148,6 +148,7 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
   const critThreshold = options.errorThreshold ?? 0.05;
   const animate = options.animate ?? true;
   const showEdgeLabels = options.showEdgeLabels ?? false;
+  const healthFilter: HealthFilter = options.healthFilter ?? 'all';
 
   // Transform: raw frames → graph model (workload-keyed)
   const rawGraph = useMemo(() => {
@@ -165,10 +166,22 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
     return filterGraph(rawGraph, filterOpts);
   }, [rawGraph, filterOpts]);
 
+  // Compute node health on the connection-type-filtered graph (before health filter)
+  const nodeHealthMap = useMemo(
+    () => nodeHealth(filteredGraph, warnThreshold, critThreshold),
+    [filteredGraph, warnThreshold, critThreshold]
+  );
+
+  // Apply health filter (uses health computed from full filtered graph)
+  const healthFilteredGraph = useMemo(() => {
+    return filterByHealth(filteredGraph, nodeHealthMap, healthFilter);
+  }, [filteredGraph, nodeHealthMap, healthFilter]);
+
   // Layout
+  const layoutDirection = options.layoutDirection ?? 'top-down';
   const graph: PositionedGraph = useMemo(() => {
-    return layoutGraph(filteredGraph, width, height);
-  }, [filteredGraph, width, height]);
+    return layoutGraph(healthFilteredGraph, width, height, layoutDirection);
+  }, [healthFilteredGraph, width, height, layoutDirection]);
 
   // Alert overlay
   const alertMap = useMemo(() => {
@@ -200,12 +213,6 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
     for (const n of effectiveNodes) { map.set(n.id, n); }
     return map;
   }, [effectiveNodes]);
-
-  // Node health map
-  const nodeHealthMap = useMemo(
-    () => nodeHealth({ nodes: graph.nodes, edges: graph.edges }, warnThreshold, critThreshold),
-    [graph.nodes, graph.edges, warnThreshold, critThreshold]
-  );
 
   // Node kind map (service/database/queue/external)
   const nodeKindMap = useMemo(() => {
@@ -245,8 +252,21 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
       effectiveNodes,
       (node) => rateToRadius((node as PositionedNode).totalRate, maxTotalRate)
     );
+    // Expand bounds to reserve space for node labels (they extend beyond the
+    // circle: left/right in left-right layout, below in top-down). Estimate
+    // label width from the longest node id at the current font size.
+    const longestLabel = effectiveNodes.reduce((m, n) => Math.max(m, n.id.length), 0);
+    const labelWidth = longestLabel * 8.5; // ~8.5px per char at 15px bold
+    if (layoutDirection === 'left-right') {
+      bounds.minX -= labelWidth; // leftmost column labels extend left
+      bounds.maxX += labelWidth; // rightmost column labels extend right
+    } else {
+      // top-down: labels centered below — pad half-width each side
+      bounds.minX -= labelWidth / 2;
+      bounds.maxX += labelWidth / 2;
+    }
     return fitView(bounds, width, svgHeight, 50);
-  }, [effectiveNodes, maxTotalRate, width, svgHeight]);
+  }, [effectiveNodes, maxTotalRate, width, svgHeight, layoutDirection]);
 
   // Auto fit on graph change
   const prevGraphRef = useRef<PositionedGraph | null>(null);
@@ -460,9 +480,13 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
 
   // Empty state
   if (graph.nodes.length === 0) {
+    const hasRawData = rawGraph.nodes.length > 0;
+    const message = hasRawData
+      ? 'No nodes match the current filter. Try changing the Health filter or Connection type filter.'
+      : 'No service graph data. Configure rate/error/latency queries with client/server or client_k8s_deployment_name/server_k8s_deployment_name columns.';
     return (
       <div className={css`display:flex;align-items:center;justify-content:center;width:${width}px;height:${height}px;color:${theme.colors.text.secondary};`}>
-        No service graph data. Configure rate/error/latency queries with client_service_workload/server_service_workload columns.
+        {message}
       </div>
     );
   }
@@ -616,12 +640,62 @@ export const ServiceMapPanel: React.FC<Props> = ({ options, data, width, height 
                   </text>
                 </g>
               )}
-              {/* Node label */}
-              <text x={node.x} y={node.y+radius+labelYOffset(node.layerIndex ?? 0)} textAnchor="middle"
-                fill={theme.colors.text.primary} fontSize={11} fontFamily="sans-serif"
-                style={{pointerEvents:'none'}}>
-                {truncateLabel(node.id)}
-              </text>
+              {/* Node label — position depends on layout direction and column */}
+              {(() => {
+                if (layoutDirection === 'left-right') {
+                  const layer = node.layer ?? 0;
+                  const total = node.totalLayers ?? 1;
+                  const isLeftmost = layer === 0;
+                  const isRightmost = layer === total - 1;
+                  // Wrapped grid blocks → label to the RIGHT of each node
+                  // (sub-columns are spaced to fit label width).
+                  if (node.wrapped) {
+                    return (
+                      <text x={node.x + radius + 6} y={node.y + 4} textAnchor="start"
+                        fill={theme.colors.text.primary} fontSize={15} fontFamily="sans-serif" fontWeight={700}
+                        style={{pointerEvents:'none'}}>
+                        {node.id}
+                      </text>
+                    );
+                  }
+                  if (isLeftmost && total > 1) {
+                    // Leftmost column (sources) → label to the LEFT
+                    return (
+                      <text x={node.x - radius - 6} y={node.y + 4} textAnchor="end"
+                        fill={theme.colors.text.primary} fontSize={15} fontFamily="sans-serif" fontWeight={700}
+                        style={{pointerEvents:'none'}}>
+                        {node.id}
+                      </text>
+                    );
+                  }
+                  if (isRightmost) {
+                    // Rightmost column (sinks) → label to the RIGHT
+                    return (
+                      <text x={node.x + radius + 6} y={node.y + 4} textAnchor="start"
+                        fill={theme.colors.text.primary} fontSize={15} fontFamily="sans-serif" fontWeight={700}
+                        style={{pointerEvents:'none'}}>
+                        {node.id}
+                      </text>
+                    );
+                  }
+                  // Middle columns → label BELOW
+                  return (
+                    <text x={node.x} y={node.y + radius + 14} textAnchor="middle"
+                      fill={theme.colors.text.primary} fontSize={15} fontFamily="sans-serif" fontWeight={700}
+                      style={{pointerEvents:'none'}}>
+                      {node.id}
+                    </text>
+                  );
+                }
+                // top-down → label below with stagger
+                return (
+                  <text x={node.x} y={node.y+radius+labelYOffset(node.layerIndex ?? 0)} textAnchor="middle"
+                    fill={theme.colors.text.primary} fontSize={15} fontFamily="sans-serif" fontWeight={700}
+                    style={{pointerEvents:'none'}}>
+                    {node.id}
+                  </text>
+                );
+              })()}
             </g>
           );
         })}

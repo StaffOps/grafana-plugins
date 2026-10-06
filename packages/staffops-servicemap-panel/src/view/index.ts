@@ -44,7 +44,7 @@ export const MAX_SCALE = 4;
  * Minimum scale for the fit-to-view operation — prevents labels from
  * rendering too small to read on initial load.
  */
-export const MIN_FIT_SCALE = 0.45;
+export const MIN_FIT_SCALE = 0.5;
 
 /** Zoom sensitivity per wheel delta unit. */
 export const ZOOM_FACTOR = 0.002;
@@ -233,10 +233,10 @@ export function isDragMovement(totalDx: number, totalDy: number): boolean {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Minimum node radius (px). */
-export const NODE_RADIUS_MIN = 8;
+export const NODE_RADIUS_MIN = 12;
 
 /** Maximum node radius (px). */
-export const NODE_RADIUS_MAX = 26;
+export const NODE_RADIUS_MAX = 38;
 
 /**
  * Computes a clamped node radius using a sqrt scale.

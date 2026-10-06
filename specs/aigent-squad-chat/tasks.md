@@ -1,5 +1,16 @@
 # Tasks: AIgent Squad Chat
 
+## Status: **DONE** (2026-07-23)
+
+All v1 tasks complete. 74 tests, 98.9% coverage. Plugin functional end-to-end against
+real AIgent Squad (`https://aigent-squad.bdc.app.br`). Only v2 deferrals remain.
+
+**Endpoints validated:**
+- Dev mock: `http://mock-aigent:8000/v1/chat/completions` (local docker-compose)
+- E2E real: `https://aigent-squad.bdc.app.br/v1/chat/completions` (EKS, token via AWS SM)
+
+---
+
 OQ-1..OQ-4 resolved in `design.md` (2026-07-16). Option A confirmed viable. Frontend
 work (Tasks 2–6, 8–10) can proceed against the OpenAI-compatible contract using a mocked
 stream. **End-to-end is blocked** until (a) AIgent Squad `/v1/chat/completions` (SSE) is
@@ -18,24 +29,35 @@ live and (b) it is registered as a custom OpenAI-compatible provider in the Graf
       not incremental). This path is NOT what `@grafana/llm` uses in the browser (it streams
       over **Grafana Live**). Must verify incremental delivery over Live during Task 3 — if
       Live also buffers for a custom provider, that's a reopen signal toward Option B.
-- [ ] Task 2: Scaffold app plugin via `@grafana/create-plugin`
+- [x] Task 2: Scaffold app plugin via `@grafana/create-plugin`
       (`--plugin-type=app --org-name=staffops`) into `packages/staffops-aigent-squad-chat`;
-      reconcile LICENSE→MIT, drop `packageManager` pin (repo convention). (depends on: Task 1.5)
+      reconcile LICENSE→MIT, drop `packageManager` pin (repo convention). DONE (2026-07-17).
 - [x] Task 3: Add `@grafana/llm` + `rxjs`; wire nav page (`PluginPage`). DONE. **Checkpoint
       PASSED (2026-07-18, user-observed in local dev stack):** `streamChatCompletions` over
       **Grafana Live** renders tokens **incrementally** for the custom provider — the ~8s
       tool-call pause shows as the "thinking…" indicator, then streaming resumes. The
       Task 1.5 residual buffering risk (HTTP resource proxy) does NOT affect the Live path.
       Option A fully validated end-to-end; Option B not needed.
-- [ ] Task 4: `AvailabilityGate` — `llm.enabled()` check + fallback UI. (depends on: Task 3)
-- [ ] Task 5: `useChatStream` hook — streaming via `streamChatCompletions` +
-      `accumulateContent`; `{messages, send, stop, status, error}`. Test with a mocked
-      Observable stream. (depends on: Task 3)
-- [ ] Task 6: Chat UI — `MessageList`/`MessageBubble` with sanitized markdown +
-      input/send/stop. (depends on: Task 5)
-- [ ] Task 8: Error/abort/retry handling + partial-content preservation. (depends on: Task 5, Task 6)
-- [ ] Task 9: Tests (independent author) ≥90% coverage; local Grafana 13.x compose smoke test. (depends on: Task 4..8)
-- [ ] Task 10: Docs — plugin README + note in monorepo AGENTS.md that repo now has an app plugin. (depends on: Task 9)
+- [x] Task 4: `AvailabilityGate` — `llm.enabled()` check + fallback UI. DONE (2026-07-22).
+      Implements `llm.enabled()` + `llm.health()` check; shows actionable fallback when
+      LLM app is missing/unconfigured. Unit tested (`AvailabilityGate.test.tsx`).
+- [x] Task 5: `useChatStream` hook — streaming via `streamChatCompletions` +
+      `accumulateContent`; `{messages, send, stop, status, error}`. DONE (2026-07-22).
+      Tested with mocked Observable stream (`useChatStream.test.ts`). Handles abort,
+      error recovery, and partial-content preservation.
+- [x] Task 6: Chat UI — `MessageList`/`MessageBubble` with sanitized markdown +
+      input/send/stop. DONE (2026-07-22). Components: `ChatPage`, `Conversation`,
+      `MessageList`, `MessageBubble`, `ChatInput`. Tested (`MessageBubble.test.tsx`,
+      `MessageList.test.tsx`, `ChatInput.test.tsx`).
+- [x] Task 8: Error/abort/retry handling + partial-content preservation. DONE (2026-07-22).
+      Integrated into `useChatStream` — abort via `stop()`, error surfaces in UI with
+      retry action, partial content preserved on stream interruption.
+- [x] Task 9: Tests (independent author) ≥90% coverage; local Grafana 13.x compose smoke
+      test. DONE (2026-07-23). 74 tests, 98.9% line coverage. Dev stack
+      (`dev/docker-compose.yaml`) with mock-aigent validates end-to-end locally.
+- [x] Task 10: Docs — plugin README + note in monorepo AGENTS.md that repo now has an app
+      plugin. DONE (2026-07-23). `README.md` comprehensive (architecture, config,
+      reasoning UX, local dev, build/test). `AGENTS.md` updated with app plugin reference.
 - [x] Task 11 (E2E): register AIgent Squad as LLM app provider; verify live
       streaming end-to-end against the org-internal AIgent Squad endpoint (configured
       out-of-repo, not stored here). DONE (2026-07-21). Findings:

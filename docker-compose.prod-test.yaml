@@ -1,0 +1,26 @@
+# Standalone Grafana (latest) with staffops-servicemap-panel installed from GitHub Release.
+# Simulates a prod-like setup — plugin downloaded at startup (like kube-prometheus-stack).
+# Runs on port 3001 to avoid conflict with the dev Grafana on 3000.
+
+services:
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana-servicemap-prod-test
+    ports:
+      - "3001:3000"
+    environment:
+      # Install plugin from release zip at startup
+      - GF_INSTALL_PLUGINS=https://github.com/StaffOps/grafana-plugins/releases/download/v0.2.0/staffops-servicemap-panel-0.2.0.zip;staffops-servicemap-panel
+      # Allow unsigned plugin
+      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=staffops-servicemap-panel
+      # Anonymous admin for quick access
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_LOG_LEVEL=info
+    volumes:
+      - grafana-data:/var/lib/grafana
+    restart: unless-stopped
+
+volumes:
+  grafana-data:

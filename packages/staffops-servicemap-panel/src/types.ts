@@ -74,6 +74,12 @@ export interface PositionedNode extends GraphNode {
   y: number;
   /** Zero-based index of this node within its DAG layer (for label staggering). */
   layerIndex?: number;
+  /** Zero-based DAG layer (column/rank) this node belongs to. */
+  layer?: number;
+  /** Total number of layers in the graph (for first/last column detection). */
+  totalLayers?: number;
+  /** True when this node's layer was wrapped into multiple sub-columns. */
+  wrapped?: boolean;
 }
 
 /** Graph model with positioned nodes (ready for rendering). */
@@ -98,6 +104,12 @@ export interface QueryRoleMapping {
 /** Allowed connection_type filter values. */
 export type ConnectionTypeFilter = 'all' | 'database' | 'messaging_system' | 'services';
 
+/** Layout direction for the DAG. */
+export type LayoutDirection = 'top-down' | 'left-right';
+
+/** Allowed health filter values. */
+export type HealthFilter = 'all' | 'healthy' | 'unhealthy';
+
 /** Panel options for the service map panel. */
 export interface ServiceMapOptions {
   /** Error ratio threshold above which edges are highlighted as critical (0–1). */
@@ -117,6 +129,10 @@ export interface ServiceMapOptions {
 
   /** Filter edges by connection_type. 'all' shows everything. Default 'all'. */
   connectionTypeFilter?: ConnectionTypeFilter;
+  /** Filter nodes by health status. Default 'all'. */
+  healthFilter?: HealthFilter;
+  /** DAG layout direction. Default 'top-down'. */
+  layoutDirection?: LayoutDirection;
   /** Show virtual_node=client nodes (external callers). Default false. */
   showVirtualClients?: boolean;
   /** Show virtual_node=server nodes (external dependencies). Default true. */

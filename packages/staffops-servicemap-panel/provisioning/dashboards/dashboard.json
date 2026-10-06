@@ -42,6 +42,8 @@
         "showEdgeLabels": false,
         "traceDatasourceUid": "servicemap-traces",
         "connectionTypeFilter": "all",
+        "healthFilter": "healthy",
+        "layoutDirection": "left-right",
         "showVirtualClients": false,
         "showVirtualServers": true,
         "blastRadiusHops": 1,

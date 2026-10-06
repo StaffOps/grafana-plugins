@@ -148,17 +148,14 @@ export function nodeHealth(
     result.set(node.id, 'ok');
   }
 
-  // Propagate worst edge status to incident nodes
+  // Propagate worst edge status to the TARGET node (server) only.
+  // The error belongs to the server — the client is not the problem.
   for (const edge of model.edges) {
     const edgeStatus = health(edge.errorRatio, warn, crit);
 
     if (edgeStatus !== 'ok') {
-      const sourceStatus = result.get(edge.source) ?? 'ok';
       const targetStatus = result.get(edge.target) ?? 'ok';
 
-      if (isWorse(edgeStatus, sourceStatus)) {
-        result.set(edge.source, edgeStatus);
-      }
       if (isWorse(edgeStatus, targetStatus)) {
         result.set(edge.target, edgeStatus);
       }
