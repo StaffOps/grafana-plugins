@@ -8,6 +8,8 @@ metadata:
   description: "grafana-plugins (StaffOps)"
   annotations:
     github.com/project-slug: StaffOps/grafana-plugins
+    backstage.io/techdocs-ref: dir:.
+  tags: [typescript, react, grafana, grafana-plugin, playwright, mkdocs]
   links:
     - url: https://github.com/StaffOps/grafana-plugins
       title: Repository
@@ -24,7 +26,8 @@ metadata:
   description: "grafana-plugins (StaffOps)"
   annotations:
     github.com/project-slug: StaffOps/grafana-plugins
-  tags: [typescript]
+    backstage.io/techdocs-ref: dir:.
+  tags: [typescript, react, grafana-plugin]
 spec:
   type: library
   lifecycle: experimental
