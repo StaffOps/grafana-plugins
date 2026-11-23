@@ -73,6 +73,7 @@ nav:
       - development/index.md
       - Building & Testing: development/building.md
       - Creating a Plugin: development/creating-a-plugin.md
+  - Handoff: handoff.md
 
 markdown_extensions:
   - admonition
